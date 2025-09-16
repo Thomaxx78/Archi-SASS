@@ -1,29 +1,49 @@
-# Create T3 App
+# Archi-SASS
 
-This is a [T3 Stack](https://create.t3.gg/) project bootstrapped with `create-t3-app`.
+## Quick Start
 
-## What's next? How do I make an app with this?
+```bash
+# Install dependencies
+npm install
 
-We try to keep this project as simple as possible, so you can start with just the scaffolding we set up for you, and add additional things later when they become necessary.
+# Run development server
+npm run dev
 
-If you are not familiar with the different technologies used in this project, please refer to the respective docs. If you still are in the wind, please join our [Discord](https://t3.gg/discord) and ask for help.
+# Build for production
+npm run build
 
-- [Next.js](https://nextjs.org)
-- [NextAuth.js](https://next-auth.js.org)
-- [Prisma](https://prisma.io)
-- [Drizzle](https://orm.drizzle.team)
-- [Tailwind CSS](https://tailwindcss.com)
-- [tRPC](https://trpc.io)
+# Start production server
+npm start
+```
 
-## Learn More
+## Database
 
-To learn more about the [T3 Stack](https://create.t3.gg/), take a look at the following resources:
+```bash
+# Generate Prisma client
+npx prisma generate
 
-- [Documentation](https://create.t3.gg/)
-- [Learn the T3 Stack](https://create.t3.gg/en/faq#what-learning-resources-are-currently-available) — Check out these awesome tutorials
+# Run migrations
+npm run db:migrate
 
-You can check out the [create-t3-app GitHub repository](https://github.com/t3-oss/create-t3-app) — your feedback and contributions are welcome!
+# Open Prisma Studio
+npm run db:studio
+```
 
-## How do I deploy this?
+## Code Quality
 
-Follow our deployment guides for [Vercel](https://create.t3.gg/en/deployment/vercel), [Netlify](https://create.t3.gg/en/deployment/netlify) and [Docker](https://create.t3.gg/en/deployment/docker) for more information.
+```bash
+# Run linting
+npm run lint
+
+# Type checking
+npm run typecheck
+
+# Format code
+npm run format:write
+```
+
+## Node mailer (MailDev)
+
+```bash
+docker run -p 1080:1080 -p 1025:1025 maildev/maildev
+```

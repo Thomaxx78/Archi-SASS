@@ -11,11 +11,11 @@ import { db } from '~/server/db';
  * @see https://next-auth.js.org/getting-started/typescript#module-augmentation
  */
 declare module 'next-auth' {
-    interface Session extends DefaultSession {
-        user: {
-            id: string;
-        } & DefaultSession['user'];
-    }
+	interface Session extends DefaultSession {
+		user: {
+			id: string;
+		} & DefaultSession['user'];
+	}
 }
 
 /**
@@ -24,22 +24,22 @@ declare module 'next-auth' {
  * @see https://next-auth.js.org/configuration/options
  */
 export const authConfig = {
-    providers: [
-        EmailProvider({
-            server: {
-                host: process.env.EMAIL_SERVER_HOST,
-                port: Number(process.env.EMAIL_SERVER_PORT),
-            },
-        }),
-    ],
-    adapter: PrismaAdapter(db),
-    callbacks: {
-        session: ({ session, user }) => ({
-            ...session,
-            user: {
-                ...session.user,
-                id: user.id,
-            },
-        }),
-    },
+	providers: [
+		EmailProvider({
+			server: {
+				host: process.env.EMAIL_SERVER_HOST,
+				port: Number(process.env.EMAIL_SERVER_PORT),
+			},
+		}),
+	],
+	adapter: PrismaAdapter(db),
+	callbacks: {
+		session: ({ session, user }) => ({
+			...session,
+			user: {
+				...session.user,
+				id: user.id,
+			},
+		}),
+	},
 } satisfies NextAuthConfig;

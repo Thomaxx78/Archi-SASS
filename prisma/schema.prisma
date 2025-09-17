@@ -49,7 +49,10 @@ model User {
     lastName      String?
     description   String?   @db.Text
     email         String?   @unique
-    emailVerified DateTime?
+    password         String?
+    emailVerified    DateTime?
+    emailToken       String?   @unique
+    emailTokenExpiry DateTime?
     image         String?
     accounts      Account[]
     sessions      Session[]

@@ -1,44 +1,51 @@
+"use client";
+
 import Link from "next/link";
-import { Session } from "next-auth";
+import { type Session } from "next-auth";
+import { api } from "~/trpc/react";
 
 interface DashboardProps {
     session: Session;
 }
 
 export default function Dashboard({ session }: DashboardProps) {
-    // Mock data pour les événements
-    const userEvents = [
-        {
-            id: 1,
-            title: "Réunion équipe développement",
-            date: "2024-01-15",
-            time: "14:00",
-            location: "Salle de conférence A",
-            participants: 8,
-            status: "created",
-            type: "meeting"
-        },
-        {
-            id: 2,
-            title: "Anniversaire Marie",
-            date: "2024-01-22",
-            time: "19:00",
-            location: "Restaurant Le Bistrot",
-            participants: 15,
-            status: "joined",
-            type: "celebration"
-        },
-        {
-            id: 3,
-            title: "Formation Next.js",
-            date: "2024-01-28",
-            time: "09:00",
-            location: "En ligne - Zoom",
-            participants: 25,
-            status: "created",
-            type: "training"
-        }
-    ];
+    const { data: events, isLoading, error } = api.event.getAll.useQuery();
+
+    const userEvents = events?.map(event => ({
+        id: event.id,
+        title: event.title,
+        date: event.startDate.toISOString().split('T')[0],
+        time: event.startDate.toTimeString().slice(0, 5),
+        location: event.location ?? "À définir",
+        participants: event.invitations.reduce((acc, inv) => acc + inv.responses.length, 0),
+        status: event.status === "PUBLISHED" ? "created" : "joined",
+        type: "meeting"
+    })) ?? [];
+
+    if (isLoading) {
+        return (
+            <main className="min-h-screen bg-stone-50 flex items-center justify-center">
+                <div className="text-center">
+                    <div className="w-12 h-12 border-4 border-lime-900 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+                    <p className="text-stone-600">Chargement des événements...</p>
+                </div>
+            </main>
+        );
+    }
+
+    if (error) {
+        return (
+            <main className="min-h-screen bg-stone-50 flex items-center justify-center">
+                <div className="text-center">
+                    <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <span className="text-2xl">⚠️</span>
+                    </div>
+                    <p className="text-stone-800 font-semibold mb-2">Erreur de chargement</p>
+                    <p className="text-stone-600">Impossible de charger les événements. Veuillez réessayer.</p>
+                </div>
+            </main>
+        );
+    }
 
     return (
         <main className="min-h-screen bg-stone-50">
@@ -153,7 +160,7 @@ export default function Dashboard({ session }: DashboardProps) {
                                             <div className="mt-2 flex items-center gap-6 text-sm text-stone-600">
                                                 <div className="flex items-center gap-1">
                                                     <span>📅</span>
-                                                    <span>{new Date(event.date).toLocaleDateString('fr-FR')}</span>
+                                                    <span>{event.date ? new Date(event.date).toLocaleDateString('fr-FR') : 'Date à définir'}</span>
                                                     <span>à {event.time}</span>
                                                 </div>
                                                 <div className="flex items-center gap-1">

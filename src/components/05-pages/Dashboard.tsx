@@ -3,13 +3,36 @@
 import Link from "next/link";
 import { type Session } from "next-auth";
 import { api } from "~/trpc/react";
+import { useState } from "react";
 
 interface DashboardProps {
     session: Session;
 }
 
 export default function Dashboard({ session }: DashboardProps) {
-    const { data: events, isLoading, error } = api.event.getAll.useQuery();
+    const [showCreateModal, setShowCreateModal] = useState(false);
+    const [formData, setFormData] = useState({
+        title: "",
+        description: "",
+        startDate: "",
+        endDate: "",
+        location: ""
+    });
+
+    const { data: events, isLoading, error, refetch } = api.event.getAll.useQuery();
+    const createEvent = api.event.create.useMutation({
+        onSuccess: () => {
+            setShowCreateModal(false);
+            setFormData({
+                title: "",
+                description: "",
+                startDate: "",
+                endDate: "",
+                location: ""
+            });
+            refetch();
+        },
+    });
 
     const userEvents = events?.map(event => ({
         id: event.id,
@@ -59,6 +82,12 @@ export default function Dashboard({ session }: DashboardProps) {
                                 Bonjour, {session.user?.name ?? session.user?.email}
                             </span>
                             <Link
+                                href="/profile"
+                                className="rounded-lg border border-stone-300 bg-white px-4 py-2 text-sm font-medium text-stone-700 transition hover:bg-stone-50"
+                            >
+                                Mon profil
+                            </Link>
+                            <Link
                                 href="/api/auth/signout"
                                 className="rounded-lg border border-stone-300 bg-white px-4 py-2 text-sm font-medium text-stone-700 transition hover:bg-stone-50"
                             >
@@ -78,7 +107,10 @@ export default function Dashboard({ session }: DashboardProps) {
                             Gérez vos événements créés et ceux auxquels vous participez
                         </p>
                     </div>
-                    <button className="rounded-lg bg-lime-900 px-6 py-3 font-semibold text-white transition hover:bg-lime-800">
+                    <button
+                        onClick={() => setShowCreateModal(true)}
+                        className="rounded-lg bg-lime-900 px-6 py-3 font-semibold text-white transition hover:bg-lime-800"
+                    >
                         + Créer un événement
                     </button>
                 </div>
@@ -202,12 +234,134 @@ export default function Dashboard({ session }: DashboardProps) {
                         <p className="mb-6 text-stone-600">
                             Créez votre premier événement ou rejoignez-en un existant
                         </p>
-                        <button className="rounded-lg bg-lime-900 px-6 py-3 font-semibold text-white transition hover:bg-lime-800">
+                        <button
+                            onClick={() => setShowCreateModal(true)}
+                            className="rounded-lg bg-lime-900 px-6 py-3 font-semibold text-white transition hover:bg-lime-800"
+                        >
                             Créer mon premier événement
                         </button>
                     </div>
                 )}
             </div>
+
+            {/* Create Event Modal */}
+            {showCreateModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+                    <div className="mx-4 w-full max-w-md rounded-xl bg-white p-6 shadow-lg">
+                        <div className="mb-4 flex items-center justify-between">
+                            <h2 className="text-xl font-semibold text-stone-800">Créer un événement</h2>
+                            <button
+                                onClick={() => setShowCreateModal(false)}
+                                className="text-stone-400 hover:text-stone-600"
+                            >
+                                ✕
+                            </button>
+                        </div>
+
+                        <form
+                            onSubmit={(e) => {
+                                e.preventDefault();
+                                createEvent.mutate({
+                                    title: formData.title,
+                                    description: formData.description || undefined,
+                                    startDate: new Date(formData.startDate),
+                                    endDate: formData.endDate ? new Date(formData.endDate) : undefined,
+                                    location: formData.location || undefined,
+                                });
+                            }}
+                            className="space-y-4"
+                        >
+                            <div>
+                                <label className="block text-sm font-medium text-stone-700 mb-1">
+                                    Titre <span className="text-red-500">*</span>
+                                </label>
+                                <input
+                                    type="text"
+                                    required
+                                    value={formData.title}
+                                    onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                                    className="w-full rounded-lg border border-stone-300 px-3 py-2 focus:border-lime-500 focus:outline-none"
+                                    placeholder="Ex: Réunion équipe"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-stone-700 mb-1">
+                                    Description
+                                </label>
+                                <textarea
+                                    value={formData.description}
+                                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                                    rows={3}
+                                    className="w-full rounded-lg border border-stone-300 px-3 py-2 focus:border-lime-500 focus:outline-none"
+                                    placeholder="Décrivez votre événement..."
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-stone-700 mb-1">
+                                    Date de début <span className="text-red-500">*</span>
+                                </label>
+                                <input
+                                    type="datetime-local"
+                                    required
+                                    value={formData.startDate}
+                                    onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
+                                    className="w-full rounded-lg border border-stone-300 px-3 py-2 focus:border-lime-500 focus:outline-none"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-stone-700 mb-1">
+                                    Date de fin
+                                </label>
+                                <input
+                                    type="datetime-local"
+                                    value={formData.endDate}
+                                    onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
+                                    className="w-full rounded-lg border border-stone-300 px-3 py-2 focus:border-lime-500 focus:outline-none"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-stone-700 mb-1">
+                                    Lieu
+                                </label>
+                                <input
+                                    type="text"
+                                    value={formData.location}
+                                    onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+                                    className="w-full rounded-lg border border-stone-300 px-3 py-2 focus:border-lime-500 focus:outline-none"
+                                    placeholder="Ex: Salle de conférence A"
+                                />
+                            </div>
+
+                            <div className="flex gap-3 pt-4">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowCreateModal(false)}
+                                    className="flex-1 rounded-lg border border-stone-300 px-4 py-2 font-medium text-stone-700 transition hover:bg-stone-50"
+                                >
+                                    Annuler
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={createEvent.isPending || !formData.title || !formData.startDate}
+                                    className="flex-1 rounded-lg bg-lime-900 px-4 py-2 font-medium text-white transition hover:bg-lime-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    {createEvent.isPending ? "Création..." : "Créer"}
+                                </button>
+                            </div>
+                        </form>
+
+                        {createEvent.error && (
+                            <div className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-600">
+                                Erreur lors de la création de l'événement. Veuillez réessayer.
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
         </main>
     );
 }

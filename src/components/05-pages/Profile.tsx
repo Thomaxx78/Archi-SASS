@@ -93,7 +93,7 @@ export default function Profile({ session }: ProfileProps) {
 				profile={profile}
 				mounted={mounted}
 			/>
-			<BackButton href="/dashboard" label="Retour au dashboard" />
+			<BackButton href="/" label="Retour au dashboard" />
 
 			{/* Profile Content */}
 			<div className="container mx-auto px-6 py-8">

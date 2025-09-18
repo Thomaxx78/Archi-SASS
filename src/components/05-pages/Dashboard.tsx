@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { type Session } from "next-auth";
 import { api } from "~/trpc/react";
 import { useState } from "react";
@@ -20,6 +21,7 @@ interface DashboardProps {
 }
 
 export default function Dashboard({ session }: DashboardProps) {
+	const router = useRouter();
 	const [formData, setFormData] = useState({
 		title: "",
 		description: "",
@@ -53,6 +55,7 @@ export default function Dashboard({ session }: DashboardProps) {
 			location: event.location ?? "À définir",
 			participants: event.invitations.reduce((acc, inv) => acc + inv.responses.length, 0),
 			status: event.status === "PUBLISHED" ? "created" : "joined",
+			eventStatus: event.status,
 			type: "meeting",
 		})) ?? [];
 
@@ -315,6 +318,23 @@ export default function Dashboard({ session }: DashboardProps) {
 													>
 														{event.status === "created" ? "Organisateur" : "Participant"}
 													</Badge>
+													<Badge
+														variant="outline"
+														className={
+															event.eventStatus === "PUBLISHED"
+																? "border-green-200 bg-green-50 text-green-700"
+																: event.eventStatus === "DRAFT"
+																? "border-yellow-200 bg-yellow-50 text-yellow-700"
+																: event.eventStatus === "CANCELLED"
+																? "border-red-200 bg-red-50 text-red-700"
+																: "border-gray-200 bg-gray-50 text-gray-700"
+														}
+													>
+														{event.eventStatus === "PUBLISHED" && "🌟 Publié"}
+														{event.eventStatus === "DRAFT" && "📝 Brouillon"}
+														{event.eventStatus === "CANCELLED" && "❌ Annulé"}
+														{event.eventStatus === "COMPLETED" && "✅ Terminé"}
+													</Badge>
 												</div>
 												<div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm text-slate-600">
 													<div className="flex items-center gap-2">
@@ -342,12 +362,17 @@ export default function Dashboard({ session }: DashboardProps) {
 											</div>
 										</div>
 										<div className="flex items-center gap-2">
-											<Button variant="outline" size="sm" className="border-slate-300 hover:bg-slate-50">
+											<Button
+												variant="outline"
+												size="sm"
+												className="border-slate-300 hover:bg-slate-50"
+												onClick={() => router.push(`/event/${event.id}/settings`)}
+											>
 												<svg className="mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+													<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
 													<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-													<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
 												</svg>
-												Voir
+												Paramètres
 											</Button>
 											{event.status === "created" && (
 												<Button size="sm" className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700">

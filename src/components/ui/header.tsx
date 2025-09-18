@@ -25,13 +25,13 @@ export function Header({ session, profile, mounted = false }: HeaderProps) {
 						<div className="flex items-center gap-3">
 							<Avatar className="h-8 w-8">
 								<AvatarFallback className="bg-gradient-to-br from-blue-500 to-purple-500 text-white text-sm">
-									{mounted ? ((profile as any)?.firstName?.charAt(0) ?? session.user?.name?.charAt(0) ?? session.user?.email?.charAt(0) ?? "U") : "U"}
+									{mounted ? ((profile)?.firstName?.charAt(0) ?? session.user?.name?.charAt(0) ?? session.user?.email?.charAt(0) ?? "U") : "U"}
 								</AvatarFallback>
 							</Avatar>
 							<div className="hidden sm:block">
 								<p className="text-sm font-medium text-slate-700">
-									{mounted ? ((profile as any)?.firstName && (profile as any)?.lastName
-										? `${(profile as any).firstName} ${(profile as any).lastName}`
+									{mounted ? ((profile)?.firstName && (profile)?.lastName
+										? `${(profile)?.firstName} ${(profile)?.lastName}`
 										: (session.user?.name ?? "Utilisateur")) : "Utilisateur"}
 								</p>
 								<p className="text-xs text-slate-500">

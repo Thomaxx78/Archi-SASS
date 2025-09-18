@@ -60,6 +60,12 @@ model User {
     sessions      Session[]
     events        Event[]
     subscription  Subscription?
+
+    // Stripe
+    stripeCustomerId String? @unique
+
+    createdAt     DateTime @default(now())
+    updatedAt     DateTime @updatedAt
 }
 
 model VerificationToken {
@@ -72,16 +78,66 @@ model VerificationToken {
 
 // Gestion des abonnements Stripe
 model Subscription {
-    id               String   @id @default(cuid())
-    userId           String   @unique
-    stripeCustomerId String   @unique
-    stripePriceId    String?
-    status           String   // active, canceled, past_due, etc.
-    currentPeriodEnd DateTime?
-    createdAt        DateTime @default(now())
-    updatedAt        DateTime @updatedAt
+    id                    String   @id @default(cuid())
+    userId                String   @unique
+
+    // Stripe IDs
+    stripeCustomerId      String   @unique
+    stripeSubscriptionId  String?  @unique
+    stripePriceId         String?
+    stripeProductId       String?
+
+    // Status et dates
+    status                String
+    currentPeriodStart    DateTime?
+    currentPeriodEnd      DateTime?
+    cancelAt              DateTime?
+    canceledAt           DateTime?
+    trialStart           DateTime?
+    trialEnd             DateTime?
+
+    // Plan info
+    planName             String?
+    planPrice            Int?
+    planInterval         String?
+
+    createdAt            DateTime @default(now())
+    updatedAt            DateTime @updatedAt
 
     user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+    invoices Invoice[]
+
+    @@index([stripeSubscriptionId])
+    @@index([status])
+}
+
+// Historique des factures
+model Invoice {
+    id                   String   @id @default(cuid())
+    subscriptionId       String
+
+    // Stripe
+    stripeInvoiceId      String   @unique
+    stripePaymentIntentId String?
+
+    // Détails
+    status               String
+    amountPaid           Int
+    amountDue            Int
+    currency             String   @default("eur")
+
+    // Dates
+    periodStart          DateTime
+    periodEnd            DateTime
+    paidAt               DateTime?
+
+    createdAt            DateTime @default(now())
+    updatedAt            DateTime @updatedAt
+
+    subscription Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+    @@index([stripeInvoiceId])
+    @@index([status])
 }
 
 // Événements

@@ -34,7 +34,7 @@ export default function StripePaymentForm({ onSuccess, onError, className }: Str
 			const { error, paymentIntent } = await stripe.confirmPayment({
 				elements,
 				confirmParams: {
-					return_url: `${window.location.origin}/profile/sub?success=true`,
+					return_url: `${window.location.origin}/profile?subscription_success=true`,
 				},
 				redirect: "if_required",
 			});
@@ -43,6 +43,7 @@ export default function StripePaymentForm({ onSuccess, onError, className }: Str
 				setErrorMessage(error.message || "Une erreur s'est produite");
 				onError?.(error.message || "Une erreur s'est produite");
 			} else if (paymentIntent) {
+				window.location.href = `/profile?subscription_success=true`;
 				onSuccess?.(paymentIntent);
 			}
 		} catch (err) {

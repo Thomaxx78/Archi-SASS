@@ -3,6 +3,7 @@
 import { type Session } from "next-auth";
 import { api } from "~/trpc/react";
 import { useState, useEffect } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import { Button } from "~/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
 import { Badge } from "~/components/ui/badge";
@@ -25,11 +26,15 @@ export default function Profile({ session }: ProfileProps) {
 	const [mounted, setMounted] = useState(false);
 	const [showAddPaymentMethod, setShowAddPaymentMethod] = useState(false);
 	const [deletingPaymentMethodId, setDeletingPaymentMethodId] = useState<string | null>(null);
+	const [showSuccessNotification, setShowSuccessNotification] = useState(false);
 	const [formData, setFormData] = useState({
 		firstName: "",
 		lastName: "",
 		description: "",
 	});
+
+	const searchParams = useSearchParams();
+	const router = useRouter();
 
 	const { data: profile, isLoading, error, refetch } = api.user.getProfile.useQuery();
 	const { data: currentSubscription } = api.subscription.getCurrentSubscription.useQuery();
@@ -64,7 +69,23 @@ export default function Profile({ session }: ProfileProps) {
 
 	useEffect(() => {
 		setMounted(true);
-	}, []);
+
+		const subscriptionSuccess = searchParams.get("subscription_success");
+		const paymentMethodAdded = searchParams.get("payment_method_added");
+
+		if (subscriptionSuccess === "true") {
+			setShowSuccessNotification(true);
+			const url = new URL(window.location.href);
+			url.searchParams.delete("subscription_success");
+			router.replace(url.pathname + url.search);
+
+			setTimeout(() => setShowSuccessNotification(false), 5000);
+		}
+
+		if (paymentMethodAdded === "true") {
+			void refetchPaymentMethods();
+		}
+	}, [searchParams, router, refetchPaymentMethods]);
 
 	if (isLoading) {
 		return (
@@ -100,6 +121,28 @@ export default function Profile({ session }: ProfileProps) {
 
 	return (
 		<main className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-indigo-50">
+			{/* Notification de succès */}
+			{showSuccessNotification && (
+				<div className="animate-in slide-in-from-top-2 fixed top-4 right-4 z-50">
+					<div className="flex items-center gap-3 rounded-lg border border-green-200 bg-green-50 p-4 shadow-lg">
+						<div className="flex h-8 w-8 items-center justify-center rounded-full bg-green-100">
+							<svg className="h-5 w-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+							</svg>
+						</div>
+						<div>
+							<p className="font-medium text-green-800">Paiement réussi !</p>
+							<p className="text-sm text-green-600">Votre abonnement a été activé avec succès.</p>
+						</div>
+						<button onClick={() => setShowSuccessNotification(false)} className="ml-4 text-green-400 hover:text-green-600">
+							<svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+							</svg>
+						</button>
+					</div>
+				</div>
+			)}
+
 			<Header session={session} profile={profile} mounted={mounted} />
 			<BackButton href="/" label="Retour au dashboard" />
 

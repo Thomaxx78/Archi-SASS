@@ -3,6 +3,7 @@ import "~/styles/globals.css";
 import { type Metadata } from "next";
 import { Geist } from "next/font/google";
 import { SessionProvider } from "next-auth/react";
+import Script from "next/script";
 
 import { TRPCReactProvider } from "~/trpc/react";
 
@@ -21,6 +22,8 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
 	return (
 		<html lang="en" className={`${geist.variable}`}>
 			<body>
+				<Script src="https://js.stripe.com/basil/stripe.js" strategy="beforeInteractive" />
+
 				<SessionProvider>
 					<TRPCReactProvider>{children}</TRPCReactProvider>
 				</SessionProvider>

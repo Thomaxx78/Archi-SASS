@@ -15,7 +15,7 @@ declare module 'next-auth' {
 export const authConfig = {
 	secret: process.env.AUTH_SECRET,
 	session: {
-		strategy: "jwt",
+		strategy: 'jwt',
 	},
 	providers: [
 		GoogleProvider({
@@ -135,19 +135,19 @@ export const authConfig = {
 		},
 		async redirect({ url, baseUrl }) {
 			// Redirect to home page after successful authentication
-			if (url.startsWith("/api/auth")) {
+			if (url.startsWith('/api/auth')) {
 				return baseUrl;
 			}
 			// Allows relative callback URLs
-			if (url.startsWith("/")) return `${baseUrl}${url}`;
+			if (url.startsWith('/')) return `${baseUrl}${url}`;
 			// Allows callback URLs on the same origin
 			if (new URL(url).origin === baseUrl) return url;
 			return baseUrl;
 		},
 	},
 	pages: {
-        signIn: '/login',
-        newUser: '/register',
+		signIn: '/login',
+		newUser: '/register',
 		error: '/auth/error',
 	},
 } satisfies NextAuthConfig;

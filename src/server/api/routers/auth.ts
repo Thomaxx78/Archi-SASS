@@ -4,6 +4,7 @@ import crypto from 'crypto';
 import { createTRPCRouter, publicProcedure } from '~/server/api/trpc';
 import { TRPCError } from '@trpc/server';
 import { mailService } from '~/server/services/mail';
+import { StripeService } from '~/server/services/stripe';
 
 const registerSchema = z.object({
 	email: z.string().email(),
@@ -186,6 +187,23 @@ export const authRouter = createTRPCRouter({
 				emailVerified: null,
 			},
 		});
+
+		try {
+			const customer = await StripeService.createCustomer({
+				userId: user.id,
+				email: input.email,
+				name: input.name,
+			});
+			await ctx.db.user.update({
+				where: { id: user.id },
+				data: {
+					stripeCustomerId: customer.id,
+				},
+			});
+			console.log('🚀 ~ file: auth.ts:283 ~ register:publicProcedure.input.register.mutation ~ customer:', customer);
+		} catch (error) {
+			console.error('Failed to create Stripe customer:', error);
+		}
 
 		const verificationUrl = `${process.env.NEXTAUTH_URL}/verify-email?token=${emailToken}`;
 

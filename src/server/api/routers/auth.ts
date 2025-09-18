@@ -4,8 +4,8 @@ import crypto from 'crypto';
 import { createTRPCRouter, publicProcedure } from '~/server/api/trpc';
 import { TRPCError } from '@trpc/server';
 import { mailService } from '~/server/services/mail';
-import { StripeService } from '~/server/services/stripe';
 import { getWelcomeTemplate } from '~/server/templates/welcome';
+import { StripeService } from '~/server/services/stripe';
 
 const registerSchema = z.object({
 	email: z.string().email(),

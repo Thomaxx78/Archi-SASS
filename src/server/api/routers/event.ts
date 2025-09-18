@@ -9,6 +9,15 @@ const createEventSchema = z.object({
 	location: z.string().optional(),
 });
 
+const updateEventSchema = z.object({
+	id: z.string(),
+	title: z.string().min(1).max(100).optional(),
+	description: z.string().optional(),
+	startDate: z.date().optional(),
+	endDate: z.date().optional(),
+	location: z.string().optional(),
+});
+
 export const eventRouter = createTRPCRouter({
 	create: protectedProcedure.input(createEventSchema).mutation(async ({ ctx, input }) => {
 		return ctx.db.event.create({
@@ -42,6 +51,17 @@ export const eventRouter = createTRPCRouter({
 					include: { responses: true },
 				},
 			},
+		});
+	}),
+
+	update: protectedProcedure.input(updateEventSchema).mutation(async ({ ctx, input }) => {
+		const { id, ...updateData } = input;
+		return ctx.db.event.update({
+			where: {
+				id,
+				createdById: ctx.session.user.id,
+			},
+			data: updateData,
 		});
 	}),
 

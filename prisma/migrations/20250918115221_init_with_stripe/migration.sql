@@ -1,6 +1,3 @@
--- CreateSchema
-CREATE SCHEMA IF NOT EXISTS "public";
-
 -- CreateEnum
 CREATE TYPE "public"."EventStatus" AS ENUM ('DRAFT', 'PUBLISHED', 'CANCELLED', 'COMPLETED');
 
@@ -57,6 +54,9 @@ CREATE TABLE "public"."User" (
     "resetPasswordToken" TEXT,
     "resetPasswordTokenExpiry" TIMESTAMP(3),
     "image" TEXT,
+    "stripeCustomerId" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "User_pkey" PRIMARY KEY ("id")
 );
@@ -73,13 +73,42 @@ CREATE TABLE "public"."Subscription" (
     "id" TEXT NOT NULL,
     "userId" TEXT NOT NULL,
     "stripeCustomerId" TEXT NOT NULL,
+    "stripeSubscriptionId" TEXT,
     "stripePriceId" TEXT,
+    "stripeProductId" TEXT,
     "status" TEXT NOT NULL,
+    "currentPeriodStart" TIMESTAMP(3),
     "currentPeriodEnd" TIMESTAMP(3),
+    "cancelAt" TIMESTAMP(3),
+    "canceledAt" TIMESTAMP(3),
+    "trialStart" TIMESTAMP(3),
+    "trialEnd" TIMESTAMP(3),
+    "planName" TEXT,
+    "planPrice" INTEGER,
+    "planInterval" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "Subscription_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "public"."Invoice" (
+    "id" TEXT NOT NULL,
+    "subscriptionId" TEXT NOT NULL,
+    "stripeInvoiceId" TEXT NOT NULL,
+    "stripePaymentIntentId" TEXT,
+    "status" TEXT NOT NULL,
+    "amountPaid" INTEGER NOT NULL,
+    "amountDue" INTEGER NOT NULL,
+    "currency" TEXT NOT NULL DEFAULT 'eur',
+    "periodStart" TIMESTAMP(3) NOT NULL,
+    "periodEnd" TIMESTAMP(3) NOT NULL,
+    "paidAt" TIMESTAMP(3),
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "Invoice_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -139,6 +168,9 @@ CREATE UNIQUE INDEX "User_emailToken_key" ON "public"."User"("emailToken");
 CREATE UNIQUE INDEX "User_resetPasswordToken_key" ON "public"."User"("resetPasswordToken");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "User_stripeCustomerId_key" ON "public"."User"("stripeCustomerId");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "VerificationToken_token_key" ON "public"."VerificationToken"("token");
 
 -- CreateIndex
@@ -149,6 +181,24 @@ CREATE UNIQUE INDEX "Subscription_userId_key" ON "public"."Subscription"("userId
 
 -- CreateIndex
 CREATE UNIQUE INDEX "Subscription_stripeCustomerId_key" ON "public"."Subscription"("stripeCustomerId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Subscription_stripeSubscriptionId_key" ON "public"."Subscription"("stripeSubscriptionId");
+
+-- CreateIndex
+CREATE INDEX "Subscription_stripeSubscriptionId_idx" ON "public"."Subscription"("stripeSubscriptionId");
+
+-- CreateIndex
+CREATE INDEX "Subscription_status_idx" ON "public"."Subscription"("status");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Invoice_stripeInvoiceId_key" ON "public"."Invoice"("stripeInvoiceId");
+
+-- CreateIndex
+CREATE INDEX "Invoice_stripeInvoiceId_idx" ON "public"."Invoice"("stripeInvoiceId");
+
+-- CreateIndex
+CREATE INDEX "Invoice_status_idx" ON "public"."Invoice"("status");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "Event_shareToken_key" ON "public"."Event"("shareToken");
@@ -178,6 +228,9 @@ ALTER TABLE "public"."Session" ADD CONSTRAINT "Session_userId_fkey" FOREIGN KEY 
 ALTER TABLE "public"."Subscription" ADD CONSTRAINT "Subscription_userId_fkey" FOREIGN KEY ("userId") REFERENCES "public"."User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE "public"."Invoice" ADD CONSTRAINT "Invoice_subscriptionId_fkey" FOREIGN KEY ("subscriptionId") REFERENCES "public"."Subscription"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "public"."Event" ADD CONSTRAINT "Event_createdById_fkey" FOREIGN KEY ("createdById") REFERENCES "public"."User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
@@ -185,4 +238,3 @@ ALTER TABLE "public"."Invitation" ADD CONSTRAINT "Invitation_eventId_fkey" FOREI
 
 -- AddForeignKey
 ALTER TABLE "public"."Response" ADD CONSTRAINT "Response_invitationId_fkey" FOREIGN KEY ("invitationId") REFERENCES "public"."Invitation"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-

@@ -128,4 +128,53 @@ export class StripeService {
 			throw error;
 		}
 	}
+
+	/**
+	 * Get payment methods for a customer
+	 * @param customerId - The ID of the Stripe customer
+	 * @returns List of payment methods
+	 * @throws Error
+	 */
+	static async getPaymentMethods(customerId: string) {
+		try {
+			const paymentMethods = await stripe.paymentMethods.list({
+				customer: customerId,
+				type: 'card',
+			});
+
+			return paymentMethods.data.map((pm) => ({
+				id: pm.id,
+				type: pm.type,
+				card: pm.card
+					? {
+							brand: pm.card.brand,
+							last4: pm.card.last4,
+							expMonth: pm.card.exp_month,
+							expYear: pm.card.exp_year,
+							funding: pm.card.funding,
+						}
+					: null,
+				created: pm.created,
+			}));
+		} catch (error) {
+			console.error('❌ [ERROR - STRIPE - GET PAYMENT METHODS] ', error);
+			throw error;
+		}
+	}
+
+	/**
+	 * Detach a payment method from a customer
+	 * @param paymentMethodId - The ID of the payment method to detach
+	 * @returns The detached payment method
+	 * @throws Error
+	 */
+	static async detachPaymentMethod(paymentMethodId: string) {
+		try {
+			const paymentMethod = await stripe.paymentMethods.detach(paymentMethodId);
+			return paymentMethod;
+		} catch (error) {
+			console.error('❌ [ERROR - STRIPE - DETACH PAYMENT METHOD] ', error);
+			throw error;
+		}
+	}
 }

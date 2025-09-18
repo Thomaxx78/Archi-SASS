@@ -30,11 +30,10 @@ export default function StripePaymentForm({ onSuccess, onError, className }: Str
 		setErrorMessage(null);
 
 		try {
-			// Confirmer le paiement
 			const { error, paymentIntent } = await stripe.confirmPayment({
 				elements,
 				confirmParams: {
-					return_url: `${window.location.origin}/profile/sub?success=true`,
+					return_url: `${window.location.origin}/profile/subscription?success=true`,
 				},
 				redirect: "if_required",
 			});
@@ -61,12 +60,10 @@ export default function StripePaymentForm({ onSuccess, onError, className }: Str
 			</CardHeader>
 			<CardContent>
 				<form onSubmit={handleSubmit} className="space-y-6">
-					{/* Élément de paiement */}
 					<div>
 						<PaymentElement />
 					</div>
 
-					{/* Adresse de facturation */}
 					<div>
 						<label className="mb-2 block text-sm font-medium">Adresse de facturation</label>
 						<div className="rounded-md border p-3">
@@ -79,14 +76,12 @@ export default function StripePaymentForm({ onSuccess, onError, className }: Str
 						</div>
 					</div>
 
-					{/* Affichage des erreurs */}
 					{errorMessage && (
 						<Alert className="border-red-500 bg-red-50">
 							<AlertDescription className="text-red-700">{errorMessage}</AlertDescription>
 						</Alert>
 					)}
 
-					{/* Bouton de soumission */}
 					<Button type="submit" disabled={!stripe || !elements || isProcessing} className="w-full" size="lg">
 						{isProcessing ? "Traitement en cours..." : "Confirmer le paiement"}
 					</Button>

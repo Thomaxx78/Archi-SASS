@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { signIn } from "next-auth/react";
 import { Button } from "~/components/ui/button";
@@ -18,6 +18,8 @@ export default function LoginPage() {
 	const [isLoading, setIsLoading] = useState(false);
 
 	const router = useRouter();
+	const searchParams = useSearchParams();
+	const callbackUrl = searchParams.get("callbackUrl") || "/";
 
 	const handleSubmit = async (e: React.FormEvent) => {
 		e.preventDefault();
@@ -42,7 +44,7 @@ export default function LoginPage() {
 				}
 			} else if (result?.ok) {
 				console.log("SignIn successful, redirecting...");
-				router.push("/");
+				router.push(callbackUrl);
 			}
 		} catch (error) {
 			console.error("SignIn exception:", error);

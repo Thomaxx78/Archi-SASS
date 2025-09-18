@@ -1,12 +1,11 @@
 import { auth } from "~/server/auth";
-import { redirect } from "next/navigation";
 import Profile from "~/components/05-pages/Profile";
 
 export default async function ProfilePage() {
 	const session = await auth();
 
 	if (!session) {
-		redirect("/");
+		throw new Error("Session non trouvée");
 	}
 
 	return <Profile session={session} />;

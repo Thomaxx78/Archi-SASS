@@ -27,6 +27,7 @@ export default function Dashboard({ session }: DashboardProps) {
 		endDate: "",
 		location: "",
 	});
+	const [isDialogOpen, setIsDialogOpen] = useState(false);
 
 	const { data: events, isLoading, error, refetch } = api.event.getAll.useQuery();
 	const createEvent = api.event.create.useMutation({
@@ -38,7 +39,8 @@ export default function Dashboard({ session }: DashboardProps) {
 				endDate: "",
 				location: "",
 			});
-			refetch();
+			setIsDialogOpen(false);
+			void refetch();
 		},
 	});
 
@@ -92,7 +94,7 @@ export default function Dashboard({ session }: DashboardProps) {
 
 	return (
 		<main className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-indigo-50">
-			<Header session={session} />
+			<Header session={session} mounted={true} />
 
 			{/* Dashboard Content */}
 			<div className="container mx-auto px-6 py-8">
@@ -110,7 +112,7 @@ export default function Dashboard({ session }: DashboardProps) {
 									</p>
 								</div>
 								<div className="hidden md:block">
-									<Dialog>
+									<Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
 										<DialogTrigger asChild>
 											<Button size="lg" variant="secondary" className="bg-white/20 hover:bg-white/30 text-white border-white/30">
 												<svg className="mr-2 h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -194,7 +196,7 @@ export default function Dashboard({ session }: DashboardProps) {
 														type="button"
 														variant="outline"
 														className="flex-1"
-														onClick={() => {/* Dialog will close automatically */}}
+														onClick={() => setIsDialogOpen(false)}
 													>
 														Annuler
 													</Button>
@@ -377,7 +379,7 @@ export default function Dashboard({ session }: DashboardProps) {
 							<p className="mb-8 text-lg text-slate-600 max-w-md mx-auto">
 								Créez votre premier événement et commencez à organiser des expériences extraordinaires
 							</p>
-							<Dialog>
+							<Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
 								<DialogTrigger asChild>
 									<Button size="lg" className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 px-8 py-4 text-lg shadow-lg shadow-blue-500/25">
 										<svg className="mr-2 h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -461,7 +463,7 @@ export default function Dashboard({ session }: DashboardProps) {
 												type="button"
 												variant="outline"
 												className="flex-1"
-												onClick={() => {/* Dialog will close automatically */}}
+												onClick={() => setIsDialogOpen(false)}
 											>
 												Annuler
 											</Button>
@@ -488,7 +490,7 @@ export default function Dashboard({ session }: DashboardProps) {
 
 				{/* Mobile Create Button */}
 				<div className="fixed bottom-6 right-6 md:hidden">
-					<Dialog>
+					<Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
 						<DialogTrigger asChild>
 							<Button size="lg" className="h-14 w-14 rounded-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 shadow-lg shadow-blue-500/25">
 								<svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -571,7 +573,7 @@ export default function Dashboard({ session }: DashboardProps) {
 										type="button"
 										variant="outline"
 										className="flex-1"
-										onClick={() => setShowCreateModal(false)}
+										onClick={() => setIsDialogOpen(false)}
 									>
 										Annuler
 									</Button>

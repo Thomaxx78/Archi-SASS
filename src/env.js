@@ -12,6 +12,8 @@ export const env = createEnv({
 		EMAIL_SERVER_PORT: z.string(),
 		DATABASE_URL: z.string().url(),
 		NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+		NEXTAUTH_URL: z.string().url(),
+        APP_NAME: z.string().default("MyApp"),
 	},
 
 	/**
@@ -33,6 +35,8 @@ export const env = createEnv({
 		EMAIL_SERVER_PORT: process.env.EMAIL_SERVER_PORT,
 		DATABASE_URL: process.env.DATABASE_URL,
 		NODE_ENV: process.env.NODE_ENV,
+        NEXTAUTH_URL: process.env.NEXTAUTH_URL,
+        APP_NAME: process.env.APP_NAME,
 	},
 	/**
 	 * Run `build` or `dev` with `SKIP_ENV_VALIDATION` to skip env validation. This is especially

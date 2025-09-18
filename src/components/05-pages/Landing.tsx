@@ -26,7 +26,7 @@ export default function Landing() {
 								<Link href="#pricing">Tarifs</Link>
 							</Button>
 							<Button className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700" asChild>
-								<Link href="/api/auth/signin">
+								<Link href="/login">
 									Commencer
 								</Link>
 							</Button>
@@ -53,7 +53,7 @@ export default function Landing() {
 						</p>
 						<div className="flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
 							<Button size="lg" className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 px-8 py-4 text-lg shadow-lg shadow-blue-500/25" asChild>
-								<Link href="/api/auth/signin">
+								<Link href="/login">
 									Démarrer gratuitement
 								</Link>
 							</Button>
@@ -399,7 +399,7 @@ export default function Landing() {
 								</div>
 								<Separator className="my-6" />
 								<Button variant="outline" className="w-full border-slate-300" asChild>
-									<Link href="/api/auth/signin">
+									<Link href="/login">
 										Commencer gratuitement
 									</Link>
 								</Button>
@@ -444,7 +444,7 @@ export default function Landing() {
 								</div>
 								<Separator className="my-6" />
 								<Button className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700" asChild>
-									<Link href="/api/auth/signin">
+									<Link href="/login">
 										Démarrer l'essai gratuit
 									</Link>
 								</Button>
@@ -512,7 +512,7 @@ export default function Landing() {
 							</p>
 							<div className="flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
 								<Button size="lg" className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 px-10 py-4 text-lg shadow-lg shadow-blue-500/25" asChild>
-									<Link href="/api/auth/signin">
+									<Link href="/login">
 										Commencer maintenant
 									</Link>
 								</Button>

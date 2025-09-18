@@ -78,7 +78,7 @@ export default function VerifyEmailPage() {
 								Votre compte a été activé avec succès. Vous allez être redirigé vers la page de connexion...
 							</p>
 							<Button
-								onClick={() => router.push("/auth/signin")}
+								onClick={() => router.push("/login")}
 								className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
 							>
 								Se connecter maintenant
@@ -104,7 +104,7 @@ export default function VerifyEmailPage() {
 								<Button variant="outline" onClick={() => router.push("/auth/register")} className="w-full">
 									Créer un nouveau compte
 								</Button>
-								<Button variant="ghost" onClick={() => router.push("/auth/signin")} className="w-full">
+								<Button variant="ghost" onClick={() => router.push("/login")} className="w-full">
 									Retour à la connexion
 								</Button>
 							</div>

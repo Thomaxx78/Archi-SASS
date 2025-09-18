@@ -21,7 +21,7 @@ export default function CheckEmailPage() {
 					</div>
 					<h1 className="mb-2 text-2xl font-bold text-slate-900">Vérifiez votre email</h1>
 					<p className="mb-6 text-slate-600">Un lien de vérification a été envoyé à votre adresse email.</p>
-					<Link href="/auth/signin">
+					<Link href="/login">
 						<Button variant="outline">Retour à la connexion</Button>
 					</Link>
 				</CardContent>

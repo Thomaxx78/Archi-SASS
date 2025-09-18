@@ -4,7 +4,6 @@ import crypto from 'crypto';
 import { createTRPCRouter, publicProcedure } from '~/server/api/trpc';
 import { TRPCError } from '@trpc/server';
 import { mailService } from '~/server/services/mail';
-import { getWelcomeTemplate } from '~/server/templates/welcome';
 
 const registerSchema = z.object({
 	email: z.string().email(),
@@ -161,63 +160,51 @@ function getPasswordResetTemplate(data: { userName: string; resetUrl: string; ap
 
 export const authRouter = createTRPCRouter({
 	register: publicProcedure.input(registerSchema).mutation(async ({ ctx, input }) => {
-    const existingUser = await ctx.db.user.findUnique({
-        where: { email: input.email },
-    });
+		const existingUser = await ctx.db.user.findUnique({
+			where: { email: input.email },
+		});
 
-    if (existingUser) {
-        throw new TRPCError({
-            code: 'CONFLICT',
-            message: 'Un compte avec cet email existe déjà',
-        });
-    }
+		if (existingUser) {
+			throw new TRPCError({
+				code: 'CONFLICT',
+				message: 'Un compte avec cet email existe déjà',
+			});
+		}
 
-    const hashedPassword = await bcryptjs.hash(input.password, 12);
+		const hashedPassword = await bcryptjs.hash(input.password, 12);
 
-    const emailToken = crypto.randomBytes(32).toString('hex');
-    const emailTokenExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000);
+		const emailToken = crypto.randomBytes(32).toString('hex');
+		const emailTokenExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
-    const user = await ctx.db.user.create({
-        data: {
-            email: input.email,
-            password: hashedPassword,
-            name: input.name,
-            emailToken,
-            emailTokenExpiry,
-            emailVerified: null,
-        },
-    });
+		const user = await ctx.db.user.create({
+			data: {
+				email: input.email,
+				password: hashedPassword,
+				name: input.name,
+				emailToken,
+				emailTokenExpiry,
+				emailVerified: null,
+			},
+		});
 
-    const verificationUrl = `${process.env.NEXTAUTH_URL}/verify-email?token=${emailToken}`;
+		const verificationUrl = `${process.env.NEXTAUTH_URL}/verify-email?token=${emailToken}`;
 
-    const verificationTemplate = getVerificationTemplate({
-        userName: input.name || input.email,
-        verificationUrl,
-        appName: process.env.APP_NAME || 'EventMaster',
-    });
+		const template = getVerificationTemplate({
+			userName: input.name || input.email,
+			verificationUrl,
+			appName: process.env.APP_NAME || 'EventMaster',
+		});
 
-    const welcomeTemplate = getWelcomeTemplate({
-        userName: input.name || input.email,
-        appName: process.env.APP_NAME || 'EventMaster',
-        loginUrl: `${process.env.NEXTAUTH_URL}/login`,
-    });
+		await mailService.sendMail({
+			to: input.email,
+			template,
+		});
 
-    await Promise.allSettled([
-        mailService.sendMail({
-            to: input.email,
-            template: verificationTemplate,
-        }),
-        mailService.sendMail({
-            to: input.email,
-            template: welcomeTemplate,
-        })
-    ]);
-
-    return {
-        success: true,
-        message: "Compte créé ! Vérifiez votre email pour l'activer.",
-    };
-}),
+		return {
+			success: true,
+			message: "Compte créé ! Vérifiez votre email pour l'activer.",
+		};
+	}),
 
 	login: publicProcedure.input(loginSchema).mutation(async ({ ctx, input }) => {
 		const user = await ctx.db.user.findUnique({
@@ -258,54 +245,38 @@ export const authRouter = createTRPCRouter({
 	}),
 
 	verifyEmail: publicProcedure.input(verifyEmailSchema).mutation(async ({ ctx, input }) => {
-    const user = await ctx.db.user.findUnique({
-        where: { emailToken: input.token },
-    });
+		const user = await ctx.db.user.findUnique({
+			where: { emailToken: input.token },
+		});
 
-    if (!user) {
-        throw new TRPCError({
-            code: 'BAD_REQUEST',
-            message: 'Token invalide',
-        });
-    }
+		if (!user) {
+			throw new TRPCError({
+				code: 'BAD_REQUEST',
+				message: 'Token invalide',
+			});
+		}
 
-    if (!user.emailTokenExpiry || user.emailTokenExpiry < new Date()) {
-        throw new TRPCError({
-            code: 'BAD_REQUEST',
-            message: 'Token expiré',
-        });
-    }
+		if (!user.emailTokenExpiry || user.emailTokenExpiry < new Date()) {
+			throw new TRPCError({
+				code: 'BAD_REQUEST',
+				message: 'Token expiré',
+			});
+		}
 
-    await ctx.db.user.update({
-        where: { id: user.id },
-        data: {
-            emailVerified: new Date(),
-            emailToken: null,
-            emailTokenExpiry: null,
-        },
-    });
+		await ctx.db.user.update({
+			where: { id: user.id },
+			data: {
+				emailVerified: new Date(),
+				emailToken: null,
+				emailTokenExpiry: null,
+			},
+		});
 
-    const welcomeTemplate = getWelcomeTemplate({
-        userName: user.name || user.email!,
-        appName: process.env.APP_NAME || 'EventMaster',
-        loginUrl: `${process.env.NEXTAUTH_URL}/login`,
-    });
-
-    try {
-        await mailService.sendMail({
-            to: user.email!,
-            template: welcomeTemplate,
-        });
-    } catch (error) {
-        console.error('Failed to send welcome email:', error);
-    }
-
-    return {
-        success: true,
-        message: 'Email vérifié avec succès !',
-    };
-}),
-
+		return {
+			success: true,
+			message: 'Email vérifié avec succès !',
+		};
+	}),
 
 	resendVerification: publicProcedure.input(resendVerificationSchema).mutation(async ({ ctx, input }) => {
 		const user = await ctx.db.user.findUnique({

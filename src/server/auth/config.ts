@@ -1,5 +1,6 @@
 import { type DefaultSession, type NextAuthConfig } from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
+import GoogleProvider from 'next-auth/providers/google';
 import bcryptjs from 'bcryptjs';
 import { db } from '~/server/db';
 
@@ -17,6 +18,10 @@ export const authConfig = {
 		strategy: "jwt",
 	},
 	providers: [
+		GoogleProvider({
+			clientId: process.env.GOOGLE_CLIENT_ID!,
+			clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+		}),
 		CredentialsProvider({
 			name: 'credentials',
 			credentials: {
@@ -55,18 +60,67 @@ export const authConfig = {
 		}),
 	],
 	callbacks: {
-		async signIn({ user }) {
-			if (user.id) {
-				const dbUser = await db.user.findUnique({
-					where: { id: user.id },
+		async signIn({ user, account }) {
+			if (!account) return false;
+
+			// For OAuth providers (Google), auto-verify email
+			if (account.provider === 'google') {
+				if (!user.email) return false;
+
+				// Check if user already exists
+				const existingUser = await db.user.findUnique({
+					where: { email: user.email },
 				});
-				return !!dbUser?.emailVerified;
+
+				if (existingUser) {
+					// Update existing user to mark as email verified if needed
+					if (!existingUser.emailVerified) {
+						await db.user.update({
+							where: { id: existingUser.id },
+							data: {
+								emailVerified: new Date(),
+								name: user.name || existingUser.name,
+								image: user.image || existingUser.image,
+							},
+						});
+					}
+				} else {
+					// Create new user with verified email
+					await db.user.create({
+						data: {
+							email: user.email,
+							name: user.name,
+							image: user.image,
+							emailVerified: new Date(),
+						},
+					});
+				}
+				return true;
 			}
+
+			// For credentials provider, check email verification
+			if (account.provider === 'credentials') {
+				if (user.id) {
+					const dbUser = await db.user.findUnique({
+						where: { id: user.id },
+					});
+					return !!dbUser?.emailVerified;
+				}
+			}
+
 			return true;
 		},
-		async jwt({ token, user }) {
+		async jwt({ token, user, account }) {
 			if (user) {
-				token.id = user.id;
+				// For new sign-ins, get the database user ID
+				if (account?.provider === 'google') {
+					const dbUser = await db.user.findUnique({
+						where: { email: user.email! },
+					});
+					token.id = dbUser?.id;
+				} else {
+					token.id = user.id;
+				}
 			}
 			return token;
 		},
@@ -78,6 +132,17 @@ export const authConfig = {
 					id: token.id as string,
 				},
 			};
+		},
+		async redirect({ url, baseUrl }) {
+			// Redirect to home page after successful authentication
+			if (url.startsWith("/api/auth")) {
+				return baseUrl;
+			}
+			// Allows relative callback URLs
+			if (url.startsWith("/")) return `${baseUrl}${url}`;
+			// Allows callback URLs on the same origin
+			if (new URL(url).origin === baseUrl) return url;
+			return baseUrl;
 		},
 	},
 	pages: {

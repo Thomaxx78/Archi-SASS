@@ -3,7 +3,7 @@ import { auth } from '~/server/auth';
 export default auth((req) => {
 	const { pathname } = req.nextUrl;
 
-	const publicRoutes = ['/', '/login', '/register', '/verify-email', '/check-email', '/api/auth', '/api/trpc', '/_next', '/favicon.ico'];
+	const publicRoutes = ['/', '/login', '/register', '/verify-email', '/check-email', '/forgot-password', '/reset-password', '/api/auth', '/api/trpc', '/_next', '/favicon.ico'];
 
 	const isPublicRoute = publicRoutes.some((route) => {
 		if (route === '/') {

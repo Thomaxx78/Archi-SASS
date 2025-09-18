@@ -24,6 +24,15 @@ const resendVerificationSchema = z.object({
 	email: z.string().email(),
 });
 
+const forgotPasswordSchema = z.object({
+	email: z.string().email(),
+});
+
+const resetPasswordSchema = z.object({
+	token: z.string(),
+	newPassword: z.string().min(6),
+});
+
 function getVerificationTemplate(data: { userName: string; verificationUrl: string; appName: string }) {
 	return {
 		subject: `Vérifiez votre email - ${data.appName}`,
@@ -79,6 +88,72 @@ function getVerificationTemplate(data: { userName: string; verificationUrl: stri
 			${data.verificationUrl}
 
 			Ce lien expire dans 24 heures. Si vous n'avez pas créé ce compte, ignorez cet email.
+		`,
+	};
+}
+
+function getPasswordResetTemplate(data: { userName: string; resetUrl: string; appName: string }) {
+	return {
+		subject: `Réinitialisation de votre mot de passe - ${data.appName}`,
+		html: `
+			<!DOCTYPE html>
+			<html lang="fr">
+			<head>
+				<meta charset="UTF-8">
+				<meta name="viewport" content="width=device-width, initial-scale=1.0">
+				<title>Réinitialisation de mot de passe</title>
+				<style>
+					body { font-family: 'Segoe UI', Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f4f4f4; }
+					.container { background-color: white; padding: 30px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); }
+					.header { text-align: center; border-bottom: 2px solid #3b82f6; padding-bottom: 20px; margin-bottom: 30px; }
+					.header h1 { color: #3b82f6; margin: 0; font-size: 28px; }
+					.button { display: inline-block; background: linear-gradient(to right, #2563eb, #7c3aed); color: white; padding: 15px 30px; text-decoration: none; border-radius: 8px; font-weight: bold; margin: 20px 0; }
+					.footer { text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; color: #666; font-size: 14px; }
+					.security-note { background-color: #fef3c7; border: 1px solid #f59e0b; border-radius: 6px; padding: 15px; margin: 20px 0; color: #92400e; }
+					.warning-note { background-color: #fef2f2; border: 1px solid #f87171; border-radius: 6px; padding: 15px; margin: 20px 0; color: #dc2626; }
+				</style>
+			</head>
+			<body>
+				<div class="container">
+					<div class="header">
+						<h1>🔑 Réinitialisation de mot de passe</h1>
+					</div>
+					<div class="content">
+						<p>Bonjour <strong>${data.userName}</strong>,</p>
+						<p>Vous avez demandé la réinitialisation de votre mot de passe sur <strong>${data.appName}</strong>.</p>
+						<p>Cliquez sur le bouton ci-dessous pour créer un nouveau mot de passe :</p>
+						<p style="text-align: center;">
+							<a href="${data.resetUrl}" class="button">🔒 Réinitialiser mon mot de passe</a>
+						</p>
+						<div class="security-note">
+							<p><strong>⚠️ Important :</strong> Ce lien expire dans 1 heure pour votre sécurité.</p>
+						</div>
+						<div class="warning-note">
+							<p><strong>🚨 Si vous n'avez pas demandé cette réinitialisation :</strong><br>
+							Ignorez cet email. Votre mot de passe actuel reste inchangé et sécurisé.</p>
+						</div>
+						<p>Vous pouvez aussi copier-coller ce lien : <br><small>${data.resetUrl}</small></p>
+					</div>
+					<div class="footer">
+						<p>Cet email a été envoyé par ${data.appName}</p>
+					</div>
+				</div>
+			</body>
+			</html>
+		`,
+		text: `
+			Réinitialisation de mot de passe - ${data.appName}
+
+			Bonjour ${data.userName},
+
+			Vous avez demandé la réinitialisation de votre mot de passe sur ${data.appName}.
+
+			Cliquez sur ce lien pour créer un nouveau mot de passe :
+			${data.resetUrl}
+
+			Ce lien expire dans 1 heure pour votre sécurité.
+
+			Si vous n'avez pas demandé cette réinitialisation, ignorez cet email.
 		`,
 	};
 }
@@ -248,6 +323,87 @@ export const authRouter = createTRPCRouter({
 		return {
 			success: true,
 			message: 'Email de vérification renvoyé !',
+		};
+	}),
+
+	forgotPassword: publicProcedure.input(forgotPasswordSchema).mutation(async ({ ctx, input }) => {
+		const user = await ctx.db.user.findUnique({
+			where: { email: input.email },
+		});
+
+		if (!user || !user.password) {
+			return {
+				success: true,
+				message: 'Si cette adresse email existe, vous recevrez un lien de réinitialisation.',
+			};
+		}
+
+		const resetToken = crypto.randomBytes(32).toString('hex');
+		const resetTokenExpiry = new Date(Date.now() + 60 * 60 * 1000);
+
+		await ctx.db.user.update({
+			where: { id: user.id },
+			data: {
+				resetPasswordToken: resetToken,
+				resetPasswordTokenExpiry: resetTokenExpiry,
+			},
+		});
+
+		const resetUrl = `${process.env.NEXTAUTH_URL}/reset-password?token=${resetToken}`;
+		const template = getPasswordResetTemplate({
+			userName: user.name || user.email!,
+			resetUrl,
+			appName: process.env.APP_NAME || 'EventMaster',
+		});
+
+		try {
+			await mailService.sendMail({
+				to: input.email,
+				template,
+			});
+		} catch (error) {
+			console.error('Failed to send password reset email:', error);
+		}
+
+		return {
+			success: true,
+			message: 'Si cette adresse email existe, vous recevrez un lien de réinitialisation.',
+		};
+	}),
+
+	resetPassword: publicProcedure.input(resetPasswordSchema).mutation(async ({ ctx, input }) => {
+		const user = await ctx.db.user.findUnique({
+			where: { resetPasswordToken: input.token },
+		});
+
+		if (!user) {
+			throw new TRPCError({
+				code: 'BAD_REQUEST',
+				message: 'Token invalide',
+			});
+		}
+
+		if (!user.resetPasswordTokenExpiry || user.resetPasswordTokenExpiry < new Date()) {
+			throw new TRPCError({
+				code: 'BAD_REQUEST',
+				message: 'Token expiré',
+			});
+		}
+
+		const hashedPassword = await bcryptjs.hash(input.newPassword, 12);
+
+		await ctx.db.user.update({
+			where: { id: user.id },
+			data: {
+				password: hashedPassword,
+				resetPasswordToken: null,
+				resetPasswordTokenExpiry: null,
+			},
+		});
+
+		return {
+			success: true,
+			message: 'Votre mot de passe a été mis à jour avec succès !',
 		};
 	}),
 });

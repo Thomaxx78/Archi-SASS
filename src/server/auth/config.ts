@@ -3,6 +3,7 @@ import CredentialsProvider from 'next-auth/providers/credentials';
 import GoogleProvider from 'next-auth/providers/google';
 import bcryptjs from 'bcryptjs';
 import { db } from '~/server/db';
+import { StripeService } from '~/server/services/stripe';
 
 declare module 'next-auth' {
 	interface Session extends DefaultSession {
@@ -84,9 +85,28 @@ export const authConfig = {
 							},
 						});
 					}
+
+					if (!existingUser.stripeCustomerId) {
+						try {
+							const customer = await StripeService.createCustomer({
+								userId: existingUser.id,
+								email: user.email,
+								name: user.name || existingUser.name || undefined,
+							});
+							await db.user.update({
+								where: { id: existingUser.id },
+								data: {
+									stripeCustomerId: customer.id,
+								},
+							});
+							console.log('✅ Stripe customer created for existing Google user:', customer.id);
+						} catch (error) {
+							console.error('❌ Failed to create Stripe customer for existing user:', error);
+						}
+					}
 				} else {
 					// Create new user with verified email
-					await db.user.create({
+					const newUser = await db.user.create({
 						data: {
 							email: user.email,
 							name: user.name,
@@ -94,6 +114,23 @@ export const authConfig = {
 							emailVerified: new Date(),
 						},
 					});
+
+					try {
+						const customer = await StripeService.createCustomer({
+							userId: newUser.id,
+							email: user.email,
+							name: user.name || undefined,
+						});
+						await db.user.update({
+							where: { id: newUser.id },
+							data: {
+								stripeCustomerId: customer.id,
+							},
+						});
+						console.log('✅ Stripe customer created for new Google user:', customer.id);
+					} catch (error) {
+						console.error('❌ Failed to create Stripe customer for new user:', error);
+					}
 				}
 				return true;
 			}

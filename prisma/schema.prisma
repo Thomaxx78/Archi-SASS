@@ -1,218 +1,208 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
-    provider = "prisma-client-js"
+  provider = "prisma-client-js"
 }
 
 datasource db {
-    provider = "postgresql"
-    // NOTE: When using mysql or sqlserver, uncomment the @db.Text annotations in model Account below
-    // Further reading:
-    // https://next-auth.js.org/adapters/prisma#create-the-prisma-schema
-    // https://www.prisma.io/docs/reference/api-reference/prisma-schema-reference#string
-    url      = env("DATABASE_URL")
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
-// Necessary for Next auth
 model Account {
-    id                       String  @id @default(cuid())
-    userId                   String
-    type                     String
-    provider                 String
-    providerAccountId        String
-    refresh_token            String? @db.Text
-    access_token             String? // @db.Text
-    expires_at               Int?
-    token_type               String?
-    scope                    String?
-    id_token                 String? // @db.Text
-    session_state            String?
-    user                     User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-    refresh_token_expires_in Int?
+  id                       String  @id @default(cuid())
+  userId                   String
+  type                     String
+  provider                 String
+  providerAccountId        String
+  refresh_token            String?
+  access_token             String?
+  expires_at               Int?
+  token_type               String?
+  scope                    String?
+  id_token                 String?
+  session_state            String?
+  refresh_token_expires_in Int?
+  user                     User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-    @@unique([provider, providerAccountId])
+  @@unique([provider, providerAccountId])
 }
 
 model Session {
-    id           String   @id @default(cuid())
-    sessionToken String   @unique
-    userId       String
-    expires      DateTime
-    user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model User {
-    id            String    @id @default(cuid())
-    name          String?
-    firstName     String?
-    lastName      String?
-    description   String?   @db.Text
-    email         String?   @unique
-    password         String?
-    emailVerified    DateTime?
-    emailToken       String?   @unique
-    emailTokenExpiry DateTime?
-    resetPasswordToken       String?   @unique
-    resetPasswordTokenExpiry DateTime?
-    image         String?
-    accounts      Account[]
-    sessions      Session[]
-    events        Event[]
-    subscription  Subscription?
-
-    // Stripe
-    stripeCustomerId String? @unique
-
-    createdAt     DateTime @default(now())
-    updatedAt     DateTime @updatedAt
+  id                       String        @id @default(cuid())
+  name                     String?
+  firstName                String?
+  lastName                 String?
+  description              String?
+  email                    String?       @unique
+  password                 String?
+  emailVerified            DateTime?
+  emailToken               String?       @unique
+  emailTokenExpiry         DateTime?
+  resetPasswordToken       String?       @unique
+  resetPasswordTokenExpiry DateTime?
+  image                    String?
+  stripeCustomerId         String?       @unique
+  createdAt                DateTime      @default(now())
+  updatedAt                DateTime      @updatedAt
+  accounts                 Account[]
+  events                   Event[]
+  sessions                 Session[]
+  subscription             Subscription?
+  notifications            Notification[]
 }
 
 model VerificationToken {
-    identifier String
-    token      String   @unique
-    expires    DateTime
+  identifier String
+  token      String   @unique
+  expires    DateTime
 
-    @@unique([identifier, token])
+  @@unique([identifier, token])
 }
 
-// Gestion des abonnements Stripe
 model Subscription {
-    id                    String   @id @default(cuid())
-    userId                String   @unique
+  id                   String    @id @default(cuid())
+  userId               String    @unique
+  stripeCustomerId     String    @unique
+  stripeSubscriptionId String?   @unique
+  stripePriceId        String?
+  stripeProductId      String?
+  status               String
+  currentPeriodStart   DateTime?
+  currentPeriodEnd     DateTime?
+  cancelAt             DateTime?
+  canceledAt           DateTime?
+  trialStart           DateTime?
+  trialEnd             DateTime?
+  planName             String?
+  planPrice            Int?
+  planInterval         String?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+  invoices             Invoice[]
+  user                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-    // Stripe IDs
-    stripeCustomerId      String   @unique
-    stripeSubscriptionId  String?  @unique
-    stripePriceId         String?
-    stripeProductId       String?
-
-    // Status et dates
-    status                String
-    currentPeriodStart    DateTime?
-    currentPeriodEnd      DateTime?
-    cancelAt              DateTime?
-    canceledAt           DateTime?
-    trialStart           DateTime?
-    trialEnd             DateTime?
-
-    // Plan info
-    planName             String?
-    planPrice            Int?
-    planInterval         String?
-
-    createdAt            DateTime @default(now())
-    updatedAt            DateTime @updatedAt
-
-    user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-    invoices Invoice[]
-
-    @@index([stripeSubscriptionId])
-    @@index([status])
+  @@index([stripeSubscriptionId])
+  @@index([status])
 }
 
-// Historique des factures
 model Invoice {
-    id                   String   @id @default(cuid())
-    subscriptionId       String
+  id                    String       @id @default(cuid())
+  subscriptionId        String
+  stripeInvoiceId       String       @unique
+  stripePaymentIntentId String?
+  status                String
+  amountPaid            Int
+  amountDue             Int
+  currency              String       @default("eur")
+  periodStart           DateTime
+  periodEnd             DateTime
+  paidAt                DateTime?
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
+  subscription          Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
 
-    // Stripe
-    stripeInvoiceId      String   @unique
-    stripePaymentIntentId String?
-
-    // Détails
-    status               String
-    amountPaid           Int
-    amountDue            Int
-    currency             String   @default("eur")
-
-    // Dates
-    periodStart          DateTime
-    periodEnd            DateTime
-    paidAt               DateTime?
-
-    createdAt            DateTime @default(now())
-    updatedAt            DateTime @updatedAt
-
-    subscription Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
-
-    @@index([stripeInvoiceId])
-    @@index([status])
+  @@index([stripeInvoiceId])
+  @@index([status])
 }
 
-// Événements
 model Event {
-    id          String   @id @default(cuid())
-    title       String
-    description String?  @db.Text
-    startDate   DateTime
-    endDate     DateTime?
-    location    String?
-    status      EventStatus @default(DRAFT)
-    shareToken  String   @unique @default(cuid()) // Pour le lien public
-    createdAt   DateTime @default(now())
-    updatedAt   DateTime @updatedAt
+  id          String       @id @default(cuid())
+  title       String
+  description String?
+  startDate   DateTime
+  endDate     DateTime?
+  location    String?
+  status      EventStatus  @default(DRAFT)
+  shareToken  String       @unique @default(cuid())
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  createdById String
+  createdBy   User         @relation(fields: [createdById], references: [id])
+  invitations Invitation[]
 
-    createdBy   User   @relation(fields: [createdById], references: [id])
-    createdById String
-
-    invitations Invitation[]
-
-    @@index([createdById])
-    @@index([startDate])
+  @@index([createdById])
+  @@index([startDate])
 }
 
-// Invitations aux événements
 model Invitation {
-    id       String @id @default(cuid())
-    eventId  String
-    email    String
-    name     String?
-    role     InvitationRole @default(PARTICIPANT)
-    status   InvitationStatus @default(PENDING)
-    sentAt   DateTime @default(now())
+  id       String           @id @default(cuid())
+  eventId  String
+  email    String
+  name     String?
+  role     InvitationRole   @default(PARTICIPANT)
+  status   InvitationStatus @default(PENDING)
+  sentAt   DateTime         @default(now())
+  event    Event            @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  response Response?
 
-    event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
-    responses Response[]
-
-    @@unique([eventId, email])
-    @@index([eventId])
+  @@unique([eventId, email])
+  @@index([eventId])
 }
 
-// Réponses RSVP
 model Response {
-    id           String @id @default(cuid())
-    invitationId String
-    response     ResponseType
-    comment      String?
-    respondedAt  DateTime @default(now())
+  id           String       @id @default(cuid())
+  invitationId String       @unique
+  response     ResponseType
+  comment      String?
+  respondedAt  DateTime     @default(now())
+  invitation   Invitation   @relation(fields: [invitationId], references: [id], onDelete: Cascade)
 
-    invitation Invitation @relation(fields: [invitationId], references: [id], onDelete: Cascade)
-
-    @@index([invitationId])
+  @@index([invitationId])
 }
 
-// Enums
 enum EventStatus {
-    DRAFT
-    PUBLISHED
-    CANCELLED
-    COMPLETED
+  DRAFT
+  PUBLISHED
+  CANCELLED
+  COMPLETED
 }
 
 enum InvitationRole {
-    ORGANIZER
-    PARTICIPANT
+  ORGANIZER
+  PARTICIPANT
 }
 
 enum InvitationStatus {
-    PENDING
-    SENT
-    BOUNCED
+  PENDING
+  SENT
+  BOUNCED
+}
+
+model Notification {
+  id          String             @id @default(cuid())
+  userId      String
+  title       String
+  message     String
+  type        NotificationType   @default(INFO)
+  isRead      Boolean            @default(false)
+  actionUrl   String?
+  metadata    String?
+  createdAt   DateTime           @default(now())
+  user        User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+  @@index([createdAt])
+}
+
+enum NotificationType {
+  INFO
+  SUCCESS
+  WARNING
+  ERROR
+  EVENT_INVITATION
+  EVENT_UPDATE
+  SUBSCRIPTION_UPDATE
 }
 
 enum ResponseType {
-    YES
-    NO
-    MAYBE
+  YES
+  NO
+  MAYBE
 }

@@ -355,12 +355,12 @@ export default function EventSettingsPage({ params }: EventSettingsPageProps) {
 									<div className="space-y-2 text-sm">
 										<div className="flex justify-between">
 											<span className="text-slate-600">Invitations:</span>
-											<span className="font-medium">{event.invitations.length}</span>
+											<span className="font-medium">0 {/* À implémenter */}</span>
 										</div>
 										<div className="flex justify-between">
 											<span className="text-slate-600">Réponses:</span>
 											<span className="font-medium">
-												{event.invitations.reduce((acc, inv) => acc + inv.responses.length, 0)}
+												0 {/* À implémenter avec les invitations */}
 											</span>
 										</div>
 										<div className="flex justify-between">

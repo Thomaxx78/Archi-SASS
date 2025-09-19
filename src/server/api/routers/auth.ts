@@ -10,6 +10,7 @@ const registerSchema = z.object({
 	email: z.string().email(),
 	password: z.string().min(6),
 	name: z.string().min(1).optional(),
+	isGoogleSignup: z.boolean().optional().default(false), // Nouveau champ pour distinguer l'inscription Google
 });
 
 const loginSchema = z.object({
@@ -161,73 +162,104 @@ function getPasswordResetTemplate(data: { userName: string; resetUrl: string; ap
 
 export const authRouter = createTRPCRouter({
 	register: publicProcedure.input(registerSchema).mutation(async ({ ctx, input }) => {
-    const existingUser = await ctx.db.user.findUnique({
-        where: { email: input.email },
-    });
+		const existingUser = await ctx.db.user.findUnique({
+			where: { email: input.email },
+		});
 
-    if (existingUser) {
-        throw new TRPCError({
-            code: 'CONFLICT',
-            message: 'Un compte avec cet email existe déjà',
-        });
-    }
+		if (existingUser) {
+			throw new TRPCError({
+				code: 'CONFLICT',
+				message: 'Un compte avec cet email existe déjà',
+			});
+		}
 
-    const hashedPassword = await bcryptjs.hash(input.password, 12);
+		let userData;
+		let emailsToSend = [];
 
-    const emailToken = crypto.randomBytes(32).toString('hex');
-    const emailTokenExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000);
+		if (input.isGoogleSignup) {
+			userData = {
+				email: input.email,
+				name: input.name,
+				emailVerified: new Date(),
+				password: null,
+			};
 
-    const user = await ctx.db.user.create({
-        data: {
-            email: input.email,
-            password: hashedPassword,
-            name: input.name,
-            emailToken,
-            emailTokenExpiry,
-            emailVerified: null,
-        },
-    });
+			const welcomeTemplate = getWelcomeTemplate({
+				userName: input.name || input.email,
+				appName: process.env.APP_NAME || 'EventMaster',
+				loginUrl: `${process.env.NEXTAUTH_URL}/login`,
+			});
 
-    const verificationUrl = `${process.env.NEXTAUTH_URL}/verify-email?token=${emailToken}`;
+			emailsToSend.push({
+				to: input.email,
+				template: welcomeTemplate,
+			});
 
-    const verificationTemplate = getVerificationTemplate({
-        userName: input.name || input.email,
-        verificationUrl,
-        appName: process.env.APP_NAME || 'EventMaster',
-    });
+		} else {
+			const hashedPassword = await bcryptjs.hash(input.password, 12);
+			const emailToken = crypto.randomBytes(32).toString('hex');
+			const emailTokenExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
-    const welcomeTemplate = getWelcomeTemplate({
-        userName: input.name || input.email,
-        appName: process.env.APP_NAME || 'EventMaster',
-        loginUrl: `${process.env.NEXTAUTH_URL}/login`,
-    });
+			userData = {
+				email: input.email,
+				password: hashedPassword,
+				name: input.name,
+				emailToken,
+				emailTokenExpiry,
+				emailVerified: null,
+			};
 
-    await Promise.allSettled([
-        mailService.sendMail({
-            to: input.email,
-            template: verificationTemplate,
-        }),
-        mailService.sendMail({
-            to: input.email,
-            template: welcomeTemplate,
-        })
-    ]);
+			const verificationUrl = `${process.env.NEXTAUTH_URL}/verify-email?token=${emailToken}`;
+			const verificationTemplate = getVerificationTemplate({
+				userName: input.name || input.email,
+				verificationUrl,
+				appName: process.env.APP_NAME || 'EventMaster',
+			});
 
-    return {
-        success: true,
-        message: "Compte créé ! Vérifiez votre email pour l'activer.",
-    };
-}),
+			emailsToSend.push({
+				to: input.email,
+				template: verificationTemplate,
+			});
+		}
+
+		const user = await ctx.db.user.create({
+			data: userData,
+		});
+
+		await Promise.allSettled(
+			emailsToSend.map(email => mailService.sendMail(email))
+		);
+
+		if (input.isGoogleSignup) {
+			return {
+				success: true,
+				message: "Compte créé avec succès ! Bienvenue !",
+			};
+		} else {
+			return {
+				success: true,
+				message: "Compte créé ! Vérifiez votre email pour l'activer.",
+			};
+		}
+	}),
 
 	login: publicProcedure.input(loginSchema).mutation(async ({ ctx, input }) => {
 		const user = await ctx.db.user.findUnique({
 			where: { email: input.email },
 		});
 
-		if (!user || !user.password) {
+		if (!user) {
 			throw new TRPCError({
 				code: 'UNAUTHORIZED',
 				message: 'Email ou mot de passe incorrect',
+			});
+		}
+
+		// Vérifier si c'est un utilisateur Google (pas de mot de passe)
+		if (!user.password) {
+			throw new TRPCError({
+				code: 'BAD_REQUEST',
+				message: 'Ce compte utilise Google Sign-In. Connectez-vous avec Google.',
 			});
 		}
 
@@ -258,54 +290,53 @@ export const authRouter = createTRPCRouter({
 	}),
 
 	verifyEmail: publicProcedure.input(verifyEmailSchema).mutation(async ({ ctx, input }) => {
-    const user = await ctx.db.user.findUnique({
-        where: { emailToken: input.token },
-    });
+		const user = await ctx.db.user.findUnique({
+			where: { emailToken: input.token },
+		});
 
-    if (!user) {
-        throw new TRPCError({
-            code: 'BAD_REQUEST',
-            message: 'Token invalide',
-        });
-    }
+		if (!user) {
+			throw new TRPCError({
+				code: 'BAD_REQUEST',
+				message: 'Token invalide',
+			});
+		}
 
-    if (!user.emailTokenExpiry || user.emailTokenExpiry < new Date()) {
-        throw new TRPCError({
-            code: 'BAD_REQUEST',
-            message: 'Token expiré',
-        });
-    }
+		if (!user.emailTokenExpiry || user.emailTokenExpiry < new Date()) {
+			throw new TRPCError({
+				code: 'BAD_REQUEST',
+				message: 'Token expiré',
+			});
+		}
 
-    await ctx.db.user.update({
-        where: { id: user.id },
-        data: {
-            emailVerified: new Date(),
-            emailToken: null,
-            emailTokenExpiry: null,
-        },
-    });
+		await ctx.db.user.update({
+			where: { id: user.id },
+			data: {
+				emailVerified: new Date(),
+				emailToken: null,
+				emailTokenExpiry: null,
+			},
+		});
 
-    const welcomeTemplate = getWelcomeTemplate({
-        userName: user.name || user.email!,
-        appName: process.env.APP_NAME || 'EventMaster',
-        loginUrl: `${process.env.NEXTAUTH_URL}/login`,
-    });
+		const welcomeTemplate = getWelcomeTemplate({
+			userName: user.name || user.email!,
+			appName: process.env.APP_NAME || 'EventMaster',
+			loginUrl: `${process.env.NEXTAUTH_URL}/login`,
+		});
 
-    try {
-        await mailService.sendMail({
-            to: user.email!,
-            template: welcomeTemplate,
-        });
-    } catch (error) {
-        console.error('Failed to send welcome email:', error);
-    }
+		try {
+			await mailService.sendMail({
+				to: user.email!,
+				template: welcomeTemplate,
+			});
+		} catch (error) {
+			console.error('Failed to send welcome email:', error);
+		}
 
-    return {
-        success: true,
-        message: 'Email vérifié avec succès !',
-    };
-}),
-
+		return {
+			success: true,
+			message: 'Email vérifié avec succès ! Un email de bienvenue vous a été envoyé.',
+		};
+	}),
 
 	resendVerification: publicProcedure.input(resendVerificationSchema).mutation(async ({ ctx, input }) => {
 		const user = await ctx.db.user.findUnique({

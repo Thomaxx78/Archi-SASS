@@ -1,31 +1,21 @@
 import type { MailTemplate } from '../services/mail';
 
 export interface InvitationTemplateData {
-  invitedUserName: string;
-  inviterName: string;
-  eventTitle: string;
-  eventDate: string;
-  eventLocation?: string;
-  eventDescription?: string;
-  acceptUrl?: string;
-  declineUrl?: string;
+	invitedUserName: string;
+	inviterName: string;
+	eventTitle: string;
+	eventDate: string;
+	eventLocation?: string;
+	eventDescription?: string;
+	invitationUrl: string;
 }
 
 export function getInvitationTemplate(data: InvitationTemplateData): MailTemplate {
-  const {
-    invitedUserName,
-    inviterName,
-    eventTitle,
-    eventDate,
-    eventLocation,
-    eventDescription,
-    acceptUrl,
-    declineUrl
-  } = data;
+	const { invitedUserName, inviterName, eventTitle, eventDate, eventLocation, eventDescription, invitationUrl } = data;
 
-  return {
-    subject: `Invitation : ${eventTitle}`,
-    html: `
+	return {
+		subject: `Invitation : ${eventTitle}`,
+		html: `
       <!DOCTYPE html>
       <html lang="fr">
       <head>
@@ -84,16 +74,10 @@ export function getInvitationTemplate(data: InvitationTemplateData): MailTemplat
             text-decoration: none;
             border-radius: 6px;
             font-weight: bold;
-            margin: 10px 10px 10px 0;
+            margin: 10px 0;
             text-align: center;
-            min-width: 120px;
-          }
-          .accept-button {
+            min-width: 200px;
             background-color: #10b981;
-            color: white;
-          }
-          .decline-button {
-            background-color: #ef4444;
             color: white;
           }
           .buttons-container {
@@ -136,22 +120,23 @@ export function getInvitationTemplate(data: InvitationTemplateData): MailTemplat
                 ${eventLocation ? `<p><strong>📍 Lieu :</strong> ${eventLocation}</p>` : ''}
               </div>
 
-              ${eventDescription ? `
+              ${
+					eventDescription
+						? `
                 <div class="description">
                   <strong>📝 Description :</strong>
                   <p>${eventDescription}</p>
                 </div>
-              ` : ''}
+              `
+						: ''
+				}
             </div>
 
             <p>Nous espérons vous voir à cet événement !</p>
 
-            ${acceptUrl && declineUrl ? `
-              <div class="buttons-container">
-                <a href="${acceptUrl}" class="button accept-button">✅ Accepter</a>
-                <a href="${declineUrl}" class="button decline-button">❌ Décliner</a>
-              </div>
-            ` : ''}
+            <div class="buttons-container">
+              <a href="${invitationUrl}" class="button">🎉 Voir l'invitation</a>
+            </div>
           </div>
 
           <div class="footer">
@@ -162,7 +147,7 @@ export function getInvitationTemplate(data: InvitationTemplateData): MailTemplat
       </body>
       </html>
     `,
-    text: `
+		text: `
       Invitation : ${eventTitle}
 
       Bonjour ${invitedUserName},
@@ -177,11 +162,10 @@ export function getInvitationTemplate(data: InvitationTemplateData): MailTemplat
 
       Nous espérons vous voir à cet événement !
 
-      ${acceptUrl ? `Pour accepter : ${acceptUrl}` : ''}
-      ${declineUrl ? `Pour décliner : ${declineUrl}` : ''}
+      Pour voir l'invitation complète : ${invitationUrl}
 
       Cette invitation a été envoyée par ${inviterName}
       Si vous avez des questions, contactez directement l'organisateur.
-    `
-  };
+    `,
+	};
 }

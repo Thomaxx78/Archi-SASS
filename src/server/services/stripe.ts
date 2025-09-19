@@ -26,20 +26,21 @@ export interface PlanInfo {
 	price: number;
 	interval: 'month';
 	features: string[];
-	productId: string;
-	priceId: string;
+	productId?: string;
+	priceId?: string;
+	isStripe: boolean;
 }
 
-export const PLANS: Record<string, PlanInfo> = {
-	starter: {
-		id: 'starter',
-		name: 'Starter',
-		price: 0,
-		interval: 'month',
-		features: ["Jusqu'à 3 événements/mois", '50 invités maximum', 'Templates de base', 'Support par email'],
-		productId: 'prod_T4obzE1m8lgYQH',
-		priceId: 'price_1S8ey12N0jQcs8P4CZCbF8fU',
-	},
+export const FREE_PLAN: PlanInfo = {
+	id: 'free',
+	name: 'Free',
+	price: 0,
+	interval: 'month',
+	features: ["Jusqu'à 3 événements/mois", '50 invités maximum', 'Templates de base', 'Support par email'],
+	isStripe: false,
+};
+
+export const STRIPE_PLANS: Record<string, PlanInfo> = {
 	pro: {
 		id: 'pro',
 		name: 'Pro',
@@ -48,10 +49,38 @@ export const PLANS: Record<string, PlanInfo> = {
 		features: ['Événements illimités', '1000 invités maximum', 'Templates premium + IA', 'Analytiques avancées', 'Support prioritaire'],
 		productId: 'prod_T4nqgubJINojBH',
 		priceId: 'price_1S8eEy2N0jQcs8P4EBYLWRTz',
+		isStripe: true,
 	},
 };
 
+export const ALL_PLANS: Record<string, PlanInfo> = {
+	free: FREE_PLAN,
+	...STRIPE_PLANS,
+};
+
 export class StripeService {
+	/**
+	 * Create a local Free subscription (no Stripe involved)
+	 * @param userId - The user ID
+	 * @param customerId - The Stripe customer ID (for future upgrades)
+	 * @returns Local subscription data
+	 */
+	static createFreeSubscription(userId: string, customerId?: string) {
+		return {
+			userId,
+			stripeCustomerId: customerId || null,
+			stripeSubscriptionId: null,
+			stripePriceId: null,
+			stripeProductId: null,
+			status: 'active',
+			planName: FREE_PLAN.name,
+			planPrice: FREE_PLAN.price,
+			planInterval: FREE_PLAN.interval,
+			currentPeriodStart: new Date(),
+			currentPeriodEnd: null,
+		};
+	}
+
 	/**
 	 * Create a new Stripe customer
 	 * @param params - CreateCustomerParams (userId, email, name)
@@ -86,7 +115,7 @@ export class StripeService {
 			const setupIntent = await stripe.setupIntents.create({
 				customer: customerId,
 				payment_method_types: ['card'],
-				usage: 'off_session', // Pour les paiements récurrents
+				usage: 'off_session',
 				metadata: {
 					type: 'subscription_setup',
 				},
@@ -174,6 +203,83 @@ export class StripeService {
 			return paymentMethod;
 		} catch (error) {
 			console.error('❌ [ERROR - STRIPE - DETACH PAYMENT METHOD] ', error);
+			throw error;
+		}
+	}
+
+	/**
+	 * Cancel a subscription
+	 * @param subscriptionId - The ID of the Stripe subscription to cancel
+	 * @param cancelAtPeriodEnd - Whether to cancel at the end of the current period (default: true)
+	 * @returns The canceled subscription
+	 * @throws Error
+	 */
+	static async cancelSubscription(subscriptionId: string, cancelAtPeriodEnd = true) {
+		try {
+			if (cancelAtPeriodEnd) {
+				// Cancel at the end of the current period
+				const subscription = await stripe.subscriptions.update(subscriptionId, {
+					cancel_at_period_end: true,
+				});
+				return subscription;
+			} else {
+				// Cancel immediately
+				const subscription = await stripe.subscriptions.cancel(subscriptionId);
+				return subscription;
+			}
+		} catch (error) {
+			console.error('❌ [ERROR - STRIPE - CANCEL SUBSCRIPTION] ', error);
+			throw error;
+		}
+	}
+
+	/**
+	 * Update a subscription to a new price/plan
+	 * @param subscriptionId - The ID of the Stripe subscription to update
+	 * @param newPriceId - The new price ID
+	 * @returns The updated subscription
+	 * @throws Error
+	 */
+	static async updateSubscription(subscriptionId: string, newPriceId: string) {
+		try {
+			// Get the current subscription to find the subscription item
+			const currentSubscription = await stripe.subscriptions.retrieve(subscriptionId);
+
+			if (!currentSubscription.items.data[0]) {
+				throw new Error('No subscription item found');
+			}
+
+			const subscription = await stripe.subscriptions.update(subscriptionId, {
+				items: [
+					{
+						id: currentSubscription.items.data[0].id,
+						price: newPriceId,
+					},
+				],
+				proration_behavior: 'create_prorations', // Create prorations for immediate charge/credit
+			});
+
+			return subscription;
+		} catch (error) {
+			console.error('❌ [ERROR - STRIPE - UPDATE SUBSCRIPTION] ', error);
+			throw error;
+		}
+	}
+
+	/**
+	 * Reactivate a canceled subscription (if still in grace period)
+	 * @param subscriptionId - The ID of the Stripe subscription to reactivate
+	 * @returns The reactivated subscription
+	 * @throws Error
+	 */
+	static async reactivateSubscription(subscriptionId: string) {
+		try {
+			const subscription = await stripe.subscriptions.update(subscriptionId, {
+				cancel_at_period_end: false,
+			});
+			return subscription;
+		} catch (error) {
+			console.error('❌ [ERROR - STRIPE - REACTIVATE SUBSCRIPTION] ', error);
 			throw error;
 		}
 	}

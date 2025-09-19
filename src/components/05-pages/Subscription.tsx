@@ -47,20 +47,92 @@ export default function Subscription({ session, profile, mounted }: Subscription
 		},
 	});
 
-	const handlePlanSelection = (priceId: string) => {
-		setSelectedPlan(priceId);
+	const updateSubscription = api.subscription.updateSubscription.useMutation({
+		onSuccess: (data) => {
+			if (data.clientSecret) {
+				setResult({
+					success: true,
+					message: `Abonnement en cours de mise à jour vers le plan ${data.newPlan.name}. Veuillez confirmer le paiement.`,
+					client_secret: data.clientSecret,
+				});
+				setShowPaymentForm(true);
+				setIsLoadingSetupIntent(false);
+			} else {
+				setResult({
+					success: true,
+					message: `Abonnement mis à jour avec succès vers le plan ${data.newPlan.name} !`,
+				});
+				setSelectedPlan(null);
+				setShowPaymentForm(false);
+				window.location.reload();
+			}
+		},
+		onError: (error) => {
+			setResult({
+				success: false,
+				message: `Erreur: ${error.message}`,
+			});
+			setIsLoadingSetupIntent(false);
+		},
+	});
+
+	const createFreeSubscription = api.subscription.createFreeSubscription.useMutation({
+		onSuccess: (data) => {
+			setResult({
+				success: true,
+				message: `Abonnement gratuit activé avec succès !`,
+			});
+			setSelectedPlan(null);
+			setShowPaymentForm(false);
+			window.location.reload();
+		},
+		onError: (error) => {
+			setResult({
+				success: false,
+				message: `Erreur: ${error.message}`,
+			});
+		},
+	});
+
+	const handlePlanSelection = (planId: string) => {
+		setSelectedPlan(planId);
 		setResult(null);
 	};
 
 	const handleProceedToPayment = async () => {
 		if (!selectedPlan) return;
-		setIsLoadingSetupIntent(true);
-		await createSubscription.mutateAsync({
-			priceId: selectedPlan,
-			customerId: "",
-			paymentMethodId: "",
-		});
-		setShowPaymentForm(true);
+
+		const selectedPlanData = plans?.find((p) => p.id === selectedPlan);
+		if (!selectedPlanData) return;
+
+		if (!selectedPlanData.isStripe) {
+			try {
+				await createFreeSubscription.mutateAsync();
+			} catch (error) {
+				console.error("Erreur lors de la création du plan gratuit:", error);
+			}
+			return;
+		}
+
+		if (currentSubscription && currentSubscription.status === "active") {
+			try {
+				setIsLoadingSetupIntent(true);
+				await updateSubscription.mutateAsync({
+					newPriceId: selectedPlanData.priceId!,
+				});
+			} catch (error) {
+				console.error("Erreur lors de la mise à jour:", error);
+				setIsLoadingSetupIntent(false);
+			}
+		} else {
+			setIsLoadingSetupIntent(true);
+			await createSubscription.mutateAsync({
+				priceId: selectedPlanData.priceId!,
+				customerId: "",
+				paymentMethodId: "",
+			});
+			setShowPaymentForm(true);
+		}
 	};
 
 	const handlePaymentSuccess = async (paymentIntent: any) => {
@@ -85,7 +157,7 @@ export default function Subscription({ session, profile, mounted }: Subscription
 		setResult(null);
 	};
 
-	const selectedPlanData = plans?.find((p) => p.priceId === selectedPlan);
+	const selectedPlanData = plans?.find((p) => p.id === selectedPlan);
 
 	if (isLoadingPlans) {
 		return (
@@ -129,9 +201,9 @@ export default function Subscription({ session, profile, mounted }: Subscription
 										<PlanCard
 											key={plan.id}
 											plan={plan}
-											isSelected={selectedPlan === plan.priceId}
+											isSelected={selectedPlan === plan.id}
 											onSelect={handlePlanSelection}
-											isCurrentPlan={currentSubscription?.plan?.priceId === plan.priceId}
+											isCurrentPlan={currentSubscription?.plan?.id === plan.id}
 										/>
 									))}
 								</div>
@@ -145,7 +217,7 @@ export default function Subscription({ session, profile, mounted }: Subscription
 
 										<Button
 											onClick={handleProceedToPayment}
-											disabled={!selectedPlan}
+											disabled={!selectedPlan || updateSubscription.isPending}
 											size="lg"
 											className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
 										>
@@ -157,7 +229,15 @@ export default function Subscription({ session, profile, mounted }: Subscription
 													d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"
 												/>
 											</svg>
-											{currentSubscription?.plan?.priceId === selectedPlan ? "Plan identique" : "Procéder au paiement"}
+											{updateSubscription.isPending || createFreeSubscription.isPending
+												? "Mise à jour..."
+												: currentSubscription?.plan?.id === selectedPlan
+													? "Plan identique"
+													: selectedPlanData?.isStripe === false
+														? "Sélectionner le plan gratuit"
+														: currentSubscription && currentSubscription.status === "active"
+															? "Mettre à jour l'abonnement"
+															: "Procéder au paiement"}
 										</Button>
 									</div>
 								) : (

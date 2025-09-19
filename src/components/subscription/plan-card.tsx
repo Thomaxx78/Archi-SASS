@@ -9,14 +9,15 @@ interface Plan {
 	name: string;
 	price: number;
 	interval: string;
-	priceId: string;
+	priceId?: string;
 	features: string[];
+	isStripe: boolean;
 }
 
 interface PlanCardProps {
 	plan: Plan;
 	isSelected: boolean;
-	onSelect: (priceId: string) => void;
+	onSelect: (planId: string) => void;
 	isCurrentPlan?: boolean;
 }
 
@@ -26,7 +27,7 @@ export function PlanCard({ plan, isSelected, onSelect, isCurrentPlan = false }: 
 			className={`relative cursor-pointer transition-all duration-200 ${
 				isSelected ? "border-blue-500 shadow-lg ring-2 ring-blue-500" : "hover:border-blue-300 hover:shadow-lg"
 			} ${isCurrentPlan ? "bg-gradient-to-br from-blue-50 to-purple-50" : ""}`}
-			onClick={() => onSelect(plan.priceId)}
+			onClick={() => onSelect(plan.id)}
 		>
 			{isCurrentPlan && (
 				<div className="absolute -top-3 left-1/2 -translate-x-1/2 transform">
@@ -74,7 +75,7 @@ export function PlanCard({ plan, isSelected, onSelect, isCurrentPlan = false }: 
 						</div>
 					)}
 
-					<div className="text-center text-xs text-slate-400">ID: {plan.priceId}</div>
+					<div className="text-center text-xs text-slate-400">ID: {plan.priceId || `local-${plan.id}`}</div>
 				</div>
 			</CardFooter>
 		</Card>

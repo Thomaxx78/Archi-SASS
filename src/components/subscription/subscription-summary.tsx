@@ -9,8 +9,9 @@ interface Plan {
 	name: string;
 	price: number;
 	interval: string;
-	priceId: string;
+	priceId?: string;
 	features: string[];
+	isStripe: boolean;
 }
 
 interface SubscriptionSummaryProps {

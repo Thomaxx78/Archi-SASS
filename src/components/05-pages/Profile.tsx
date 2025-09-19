@@ -37,12 +37,24 @@ export default function Profile({ session }: ProfileProps) {
 	const router = useRouter();
 
 	const { data: profile, isLoading, error, refetch } = api.user.getProfile.useQuery();
-	const { data: currentSubscription } = api.subscription.getCurrentSubscription.useQuery();
+	const { data: currentSubscription, refetch: refetchSubscription } = api.subscription.getCurrentSubscription.useQuery();
 	const { data: paymentMethods, refetch: refetchPaymentMethods } = api.subscription.getPaymentMethods.useQuery();
 	const updateProfile = api.user.updateProfile.useMutation({
 		onSuccess: async () => {
 			setIsEditing(false);
 			await refetch();
+		},
+	});
+
+	const cancelSubscription = api.subscription.cancelSubscription.useMutation({
+		onSuccess: async () => {
+			await refetchSubscription();
+		},
+	});
+
+	const reactivateSubscription = api.subscription.reactivateSubscription.useMutation({
+		onSuccess: async () => {
+			await refetchSubscription();
 		},
 	});
 
@@ -79,13 +91,45 @@ export default function Profile({ session }: ProfileProps) {
 			url.searchParams.delete("subscription_success");
 			router.replace(url.pathname + url.search);
 
+			void refetchSubscription();
+			void refetchPaymentMethods();
+
 			setTimeout(() => setShowSuccessNotification(false), 5000);
 		}
 
 		if (paymentMethodAdded === "true") {
 			void refetchPaymentMethods();
 		}
-	}, [searchParams, router, refetchPaymentMethods]);
+	}, [searchParams, router, refetchPaymentMethods, refetchSubscription]);
+
+	const handleCancelSubscription = async () => {
+		if (!currentSubscription) return;
+
+		const confirmMessage =
+			"Êtes-vous sûr de vouloir annuler votre abonnement ? Il restera actif jusqu'à la fin de la période de facturation actuelle.";
+
+		if (confirm(confirmMessage)) {
+			try {
+				await cancelSubscription.mutateAsync({ cancelAtPeriodEnd: true });
+			} catch (error) {
+				console.error("Erreur lors de l'annulation:", error);
+			}
+		}
+	};
+
+	const handleReactivateSubscription = async () => {
+		if (!currentSubscription) return;
+
+		const confirmMessage = "Êtes-vous sûr de vouloir réactiver votre abonnement ?";
+
+		if (confirm(confirmMessage)) {
+			try {
+				await reactivateSubscription.mutateAsync();
+			} catch (error) {
+				console.error("Erreur lors de la réactivation:", error);
+			}
+		}
+	};
 
 	if (isLoading) {
 		return (
@@ -453,12 +497,31 @@ export default function Profile({ session }: ProfileProps) {
 											</p>
 										</div>
 										<div className="text-right">
-											<Badge variant={currentSubscription.status === "active" ? "default" : "secondary"} className="mb-2">
-												{currentSubscription.status === "active" ? "Actif" : currentSubscription.status}
-											</Badge>
+											<div className="flex flex-col gap-2">
+												<Badge variant={currentSubscription.status === "active" ? "default" : "secondary"} className="mb-2">
+													{currentSubscription.status === "active" ? "Actif" : currentSubscription.status}
+												</Badge>
+
+												{/* Afficher si l'annulation est programmée */}
+												{currentSubscription.cancelAt && (
+													<Badge variant="outline" className="border-orange-200 bg-orange-50 text-orange-700">
+														Annulation programmée
+													</Badge>
+												)}
+											</div>
+
 											{currentSubscription.currentPeriodEnd && (
 												<p className="text-xs text-slate-500">
-													Jusqu'au {new Date(currentSubscription.currentPeriodEnd).toLocaleDateString("fr-FR")}
+													{currentSubscription.cancelAt
+														? `Se termine le ${new Date(currentSubscription.currentPeriodEnd).toLocaleDateString("fr-FR")}`
+														: `Jusqu'au ${new Date(currentSubscription.currentPeriodEnd).toLocaleDateString("fr-FR")}`}
+												</p>
+											)}
+
+											{/* Afficher la date d'annulation */}
+											{currentSubscription.cancelAt && (
+												<p className="mt-1 text-xs text-orange-600">
+													Annulation le {new Date(currentSubscription.cancelAt).toLocaleDateString("fr-FR")}
 												</p>
 											)}
 										</div>
@@ -501,12 +564,88 @@ export default function Profile({ session }: ProfileProps) {
 												Modifier le plan
 											</Button>
 										</Link>
-										{currentSubscription.status === "active" && (
-											<Button variant="ghost" size="sm" className="text-red-600 hover:bg-red-50 hover:text-red-700">
-												<svg className="mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-													<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-												</svg>
-												Annuler l'abonnement
+
+										{/* Bouton d'annulation ou de réactivation */}
+										{currentSubscription.status === "active" && !currentSubscription.cancelAt && (
+											<Button
+												variant="ghost"
+												size="sm"
+												className="text-red-600 hover:bg-red-50 hover:text-red-700"
+												onClick={handleCancelSubscription}
+												disabled={cancelSubscription.isPending}
+											>
+												{cancelSubscription.isPending ? (
+													<>
+														<svg
+															className="mr-2 h-4 w-4 animate-spin"
+															fill="none"
+															stroke="currentColor"
+															viewBox="0 0 24 24"
+														>
+															<path
+																strokeLinecap="round"
+																strokeLinejoin="round"
+																strokeWidth={2}
+																d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+															/>
+														</svg>
+														Annulation...
+													</>
+												) : (
+													<>
+														<svg className="mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+															<path
+																strokeLinecap="round"
+																strokeLinejoin="round"
+																strokeWidth={2}
+																d="M6 18L18 6M6 6l12 12"
+															/>
+														</svg>
+														Annuler l'abonnement
+													</>
+												)}
+											</Button>
+										)}
+
+										{/* Bouton de réactivation si annulation programmée */}
+										{currentSubscription.status === "active" && currentSubscription.cancelAt && (
+											<Button
+												variant="outline"
+												size="sm"
+												className="text-green-600 hover:bg-green-50 hover:text-green-700"
+												onClick={handleReactivateSubscription}
+												disabled={reactivateSubscription.isPending}
+											>
+												{reactivateSubscription.isPending ? (
+													<>
+														<svg
+															className="mr-2 h-4 w-4 animate-spin"
+															fill="none"
+															stroke="currentColor"
+															viewBox="0 0 24 24"
+														>
+															<path
+																strokeLinecap="round"
+																strokeLinejoin="round"
+																strokeWidth={2}
+																d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+															/>
+														</svg>
+														Réactivation...
+													</>
+												) : (
+													<>
+														<svg className="mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+															<path
+																strokeLinecap="round"
+																strokeLinejoin="round"
+																strokeWidth={2}
+																d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+															/>
+														</svg>
+														Réactiver l'abonnement
+													</>
+												)}
 											</Button>
 										)}
 									</div>

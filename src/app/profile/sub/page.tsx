@@ -61,8 +61,7 @@ export default function Subscription() {
 
 		try {
 			console.log("Payment succeeded:", paymentIntent);
-		} catch (error) {
-		}
+		} catch (error) {}
 	};
 
 	const handlePaymentError = (error: string) => {

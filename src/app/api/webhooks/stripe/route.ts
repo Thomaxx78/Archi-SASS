@@ -75,7 +75,50 @@ async function handleSubscriptionChange(subscription: any) {
 		});
 
 		if (!existingSubscription) {
-			console.log(`⚠️ Subscription ${subscription.id} not found in database`);
+			console.log(`⚠️ Subscription ${subscription.id} not found in database, checking if it's a new upgrade...`);
+
+			if (subscription.status !== 'active') {
+				console.log(`⏳ Subscription ${subscription.id} status is '${subscription.status}', waiting for payment confirmation`);
+				return;
+			}
+
+			const user = await db.user.findUnique({
+				where: { stripeCustomerId: subscription.customer },
+				include: { subscription: true },
+			});
+			if (user?.subscription) {
+				console.log(`✅ Found user for customer ${subscription.customer}, updating existing subscription`);
+
+				const stripeSubscriptionDetails = await stripe.subscriptions.retrieve(subscription.id, {
+					expand: ['items.data.price.product'],
+				});
+
+				const priceId = stripeSubscriptionDetails.items.data[0]?.price.id;
+				const product = stripeSubscriptionDetails.items.data[0]?.price.product as any;
+
+				await db.subscription.update({
+					where: { userId: user.id },
+					data: {
+						stripeSubscriptionId: subscription.id,
+						stripePriceId: priceId,
+						stripeProductId: product?.id,
+						planName: product?.name || 'Plan Stripe',
+						planPrice: stripeSubscriptionDetails.items.data[0]?.price.unit_amount || 0,
+						planInterval: stripeSubscriptionDetails.items.data[0]?.price.recurring?.interval || 'month',
+						status: subscription.status,
+						currentPeriodStart: subscription.current_period_start ? new Date(subscription.current_period_start * 1000) : null,
+						currentPeriodEnd: subscription.current_period_end ? new Date(subscription.current_period_end * 1000) : null,
+						cancelAt: subscription.cancel_at ? new Date(subscription.cancel_at * 1000) : null,
+						canceledAt: subscription.canceled_at ? new Date(subscription.canceled_at * 1000) : null,
+						trialStart: subscription.trial_start ? new Date(subscription.trial_start * 1000) : null,
+						trialEnd: subscription.trial_end ? new Date(subscription.trial_end * 1000) : null,
+					},
+				});
+
+				console.log(`✅ Subscription upgraded from free to paid for user ${user.id}`);
+			} else {
+				console.log(`❌ No user found for customer ${subscription.customer}`);
+			}
 			return;
 		}
 
@@ -127,7 +170,7 @@ async function handleInvoicePaymentSucceeded(invoice: any) {
 			return;
 		}
 
-		const subscription = await db.subscription.findUnique({
+		let subscription = await db.subscription.findUnique({
 			where: { stripeSubscriptionId: invoice.subscription },
 		});
 
@@ -138,7 +181,50 @@ async function handleInvoicePaymentSucceeded(invoice: any) {
 					status: 'active',
 				},
 			});
+		} else {
+			console.log(`🆕 New subscription payment succeeded: ${invoice.subscription}, creating full subscription record`);
 
+			const stripeSubscription = await stripe.subscriptions.retrieve(invoice.subscription, {
+				expand: ['items.data.price.product'],
+			});
+
+			const customerId = typeof stripeSubscription.customer === 'string' ? stripeSubscription.customer : stripeSubscription.customer?.id;
+			const user = await db.user.findUnique({
+				where: { stripeCustomerId: customerId },
+				include: { subscription: true },
+			});
+
+			if (user?.subscription) {
+				const priceId = stripeSubscription.items.data[0]?.price.id;
+				const product = stripeSubscription.items.data[0]?.price.product as any;
+
+				subscription = await db.subscription.update({
+					where: { userId: user.id },
+					data: {
+						stripeSubscriptionId: stripeSubscription.id,
+						stripePriceId: priceId,
+						stripeProductId: product?.id,
+						planName: product?.name || 'Plan Stripe',
+						planPrice: stripeSubscription.items.data[0]?.price.unit_amount || 0,
+						planInterval: stripeSubscription.items.data[0]?.price.recurring?.interval || 'month',
+						status: 'active', // Le paiement a réussi
+						currentPeriodStart: (stripeSubscription as any).current_period_start
+							? new Date((stripeSubscription as any).current_period_start * 1000)
+							: null,
+						currentPeriodEnd: (stripeSubscription as any).current_period_end
+							? new Date((stripeSubscription as any).current_period_end * 1000)
+							: null,
+					},
+				});
+
+				console.log(`✅ Subscription upgraded from free to paid for user ${user.id} after payment`);
+			} else {
+				console.log(`❌ No user found for customer ${customerId}`);
+				return;
+			}
+		}
+
+		if (subscription) {
 			await db.invoice.upsert({
 				where: { stripeInvoiceId: invoice.id },
 				create: {

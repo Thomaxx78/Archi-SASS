@@ -3,7 +3,10 @@ import CredentialsProvider from 'next-auth/providers/credentials';
 import GoogleProvider from 'next-auth/providers/google';
 import bcryptjs from 'bcryptjs';
 import { db } from '~/server/db';
+import { mailService } from '~/server/services/mail';
+import { getWelcomeTemplate } from '~/server/templates/welcome';
 import { StripeService } from '~/server/services/stripe';
+import { env } from '~/env';
 
 declare module 'next-auth' {
 	interface Session extends DefaultSession {
@@ -14,14 +17,14 @@ declare module 'next-auth' {
 }
 
 export const authConfig = {
-	secret: process.env.AUTH_SECRET,
+	secret: env.AUTH_SECRET,
 	session: {
 		strategy: 'jwt',
 	},
 	providers: [
 		GoogleProvider({
-			clientId: process.env.GOOGLE_CLIENT_ID!,
-			clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+			clientId: env.GOOGLE_CLIENT_ID!,
+			clientSecret: env.GOOGLE_CLIENT_SECRET!,
 		}),
 		CredentialsProvider({
 			name: 'credentials',
@@ -116,6 +119,7 @@ export const authConfig = {
 					});
 
 					try {
+						// Créer un client Stripe
 						const customer = await StripeService.createCustomer({
 							userId: newUser.id,
 							email: user.email,
@@ -128,8 +132,22 @@ export const authConfig = {
 							},
 						});
 						console.log('✅ Stripe customer created for new Google user:', customer.id);
+
+						// Envoyer l'email de bienvenue
+						const welcomeTemplate = getWelcomeTemplate({
+							userName: newUser.name || user.email,
+							appName: env.APP_NAME || 'Archi-SASS',
+							loginUrl: `${env.NEXTAUTH_URL}/login`,
+						});
+
+						await mailService.sendMail({
+							to: newUser.email!,
+							template: welcomeTemplate,
+						});
+
+						console.log('✅ Welcome email sent to:', newUser.email);
 					} catch (error) {
-						console.error('❌ Failed to create Stripe customer for new user:', error);
+						console.error('❌ Failed to create Stripe customer or send welcome email:', error);
 					}
 				}
 				return true;

@@ -11,6 +11,7 @@ const registerSchema = z.object({
 	email: z.string().email(),
 	password: z.string().min(6),
 	name: z.string().min(1).optional(),
+	isGoogleSignup: z.boolean().optional().default(false), // Nouveau champ pour distinguer l'inscription Google
 });
 
 const loginSchema = z.object({
@@ -173,22 +174,60 @@ export const authRouter = createTRPCRouter({
 			});
 		}
 
-		const hashedPassword = await bcryptjs.hash(input.password, 12);
+		let userData;
+		let emailsToSend = [];
 
-		const emailToken = crypto.randomBytes(32).toString('hex');
-		const emailTokenExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000);
+		if (input.isGoogleSignup) {
+			userData = {
+				email: input.email,
+				name: input.name,
+				emailVerified: new Date(),
+				password: null,
+			};
 
-		const user = await ctx.db.user.create({
-			data: {
+			const welcomeTemplate = getWelcomeTemplate({
+				userName: input.name || input.email,
+				appName: process.env.APP_NAME || 'EventMaster',
+				loginUrl: `${process.env.NEXTAUTH_URL}/login`,
+			});
+
+			emailsToSend.push({
+				to: input.email,
+				template: welcomeTemplate,
+			});
+
+		} else {
+			const hashedPassword = await bcryptjs.hash(input.password, 12);
+			const emailToken = crypto.randomBytes(32).toString('hex');
+			const emailTokenExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+			userData = {
 				email: input.email,
 				password: hashedPassword,
 				name: input.name,
 				emailToken,
 				emailTokenExpiry,
 				emailVerified: null,
-			},
+			};
+
+			const verificationUrl = `${process.env.NEXTAUTH_URL}/verify-email?token=${emailToken}`;
+			const verificationTemplate = getVerificationTemplate({
+				userName: input.name || input.email,
+				verificationUrl,
+				appName: process.env.APP_NAME || 'EventMaster',
+			});
+
+			emailsToSend.push({
+				to: input.email,
+				template: verificationTemplate,
+			});
+		}
+
+		const user = await ctx.db.user.create({
+			data: userData,
 		});
 
+		// Créer un client Stripe pour tous les utilisateurs
 		try {
 			const customer = await StripeService.createCustomer({
 				userId: user.id,
@@ -201,40 +240,27 @@ export const authRouter = createTRPCRouter({
 					stripeCustomerId: customer.id,
 				},
 			});
-			console.log('🚀 ~ file: auth.ts:283 ~ register:publicProcedure.input.register.mutation ~ customer:', customer);
+			console.log('✅ Stripe customer created:', customer.id);
 		} catch (error) {
-			console.error('Failed to create Stripe customer:', error);
+			console.error('❌ Failed to create Stripe customer:', error);
 		}
 
-		const verificationUrl = `${process.env.NEXTAUTH_URL}/verify-email?token=${emailToken}`;
+		// Envoyer les emails
+		await Promise.allSettled(
+			emailsToSend.map(email => mailService.sendMail(email))
+		);
 
-		const verificationTemplate = getVerificationTemplate({
-			userName: input.name || input.email,
-			verificationUrl,
-			appName: process.env.APP_NAME || 'EventMaster',
-		});
-
-		const welcomeTemplate = getWelcomeTemplate({
-			userName: input.name || input.email,
-			appName: process.env.APP_NAME || 'EventMaster',
-			loginUrl: `${process.env.NEXTAUTH_URL}/login`,
-		});
-
-		await Promise.allSettled([
-			mailService.sendMail({
-				to: input.email,
-				template: verificationTemplate,
-			}),
-			mailService.sendMail({
-				to: input.email,
-				template: welcomeTemplate,
-			}),
-		]);
-
-		return {
-			success: true,
-			message: "Compte créé ! Vérifiez votre email pour l'activer.",
-		};
+		if (input.isGoogleSignup) {
+			return {
+				success: true,
+				message: "Compte créé avec succès ! Bienvenue !",
+			};
+		} else {
+			return {
+				success: true,
+				message: "Compte créé ! Vérifiez votre email pour l'activer.",
+			};
+		}
 	}),
 
 	login: publicProcedure.input(loginSchema).mutation(async ({ ctx, input }) => {
@@ -242,10 +268,18 @@ export const authRouter = createTRPCRouter({
 			where: { email: input.email },
 		});
 
-		if (!user || !user.password) {
+		if (!user) {
 			throw new TRPCError({
 				code: 'UNAUTHORIZED',
 				message: 'Email ou mot de passe incorrect',
+			});
+		}
+
+		// Vérifier si c'est un utilisateur Google (pas de mot de passe)
+		if (!user.password) {
+			throw new TRPCError({
+				code: 'BAD_REQUEST',
+				message: 'Ce compte utilise Google Sign-In. Connectez-vous avec Google.',
 			});
 		}
 
@@ -320,7 +354,7 @@ export const authRouter = createTRPCRouter({
 
 		return {
 			success: true,
-			message: 'Email vérifié avec succès !',
+			message: 'Email vérifié avec succès ! Un email de bienvenue vous a été envoyé.',
 		};
 	}),
 

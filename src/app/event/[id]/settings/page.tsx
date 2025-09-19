@@ -11,6 +11,19 @@ import { Textarea } from "~/components/ui/textarea";
 import { Label } from "~/components/ui/label";
 import { Header } from "~/components/ui/header";
 import { Badge } from "~/components/ui/badge";
+import {
+	Dialog,
+	DialogClose,
+	DialogContent,
+	DialogDescription,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
+	DialogTrigger,
+} from "~/components/ui/dialog";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "~/components/ui/select";
+import { Avatar, AvatarFallback, AvatarImage } from "~/components/ui/avatar";
+import { Send, Trash } from "lucide-react";
 
 interface EventSettingsPageProps {
 	params: Promise<{ id: string }>;
@@ -20,11 +33,38 @@ export default function EventSettingsPage({ params }: EventSettingsPageProps) {
 	const { id } = use(params);
 	const router = useRouter();
 	const { data: session } = useSession();
-	const [isEditing, setIsEditing] = useState(false);
 
-	const { data: event, isLoading, error, refetch } = api.event.getById.useQuery({
+	const [isEditing, setIsEditing] = useState(false);
+	const [formInviteData, setFormInviteData] = useState<Array<{ name: string; email: string; role: "ORGANIZER" | "PARTICIPANT" }>>([
+		{ name: "", email: "", role: "PARTICIPANT" },
+	]);
+	const [formData, setFormData] = useState({
+		title: "",
+		description: "",
+		startDate: "",
+		endDate: "",
+		location: "",
+	});
+
+	const {
+		data: event,
+		isLoading,
+		error,
+		refetch,
+	} = api.event.getById.useQuery({
 		id,
 	});
+
+	const {
+		data: invitations,
+		isLoading: invitationsLoading,
+		refetch: refetchInvitations,
+	} = api.invitation.getAll.useQuery(
+		{ eventId: id },
+		{
+			enabled: !!event,
+		},
+	);
 
 	const updateEvent = api.event.update.useMutation({
 		onSuccess: () => {
@@ -39,15 +79,19 @@ export default function EventSettingsPage({ params }: EventSettingsPageProps) {
 		},
 	});
 
-	const [formData, setFormData] = useState({
-		title: event?.title || "",
-		description: event?.description || "",
-		startDate: event?.startDate ? new Date(event.startDate).toISOString().slice(0, 16) : "",
-		endDate: event?.endDate ? new Date(event.endDate).toISOString().slice(0, 16) : "",
-		location: event?.location || "",
+	const addInvitations = api.invitation.addInvitations.useMutation({
+		onSuccess: () => {
+			resetInviteForm();
+			void refetch();
+		},
 	});
 
-	// Update form data when event loads
+	const removeInvitation = api.invitation.removeInvitation.useMutation({
+		onSuccess: () => {
+			void refetchInvitations();
+		},
+	});
+
 	if (event && !isEditing && formData.title === "") {
 		setFormData({
 			title: event.title,
@@ -57,6 +101,33 @@ export default function EventSettingsPage({ params }: EventSettingsPageProps) {
 			location: event.location || "",
 		});
 	}
+
+	const addInviteField = () => {
+		setFormInviteData([...formInviteData, { name: "", email: "", role: "PARTICIPANT" as const }]);
+	};
+
+	const handleInviteChange = (index: number, field: keyof (typeof formInviteData)[number], value: string) => {
+		console.log(index, field, value);
+		setFormInviteData((prev) => prev.map((invite, i) => (i === index ? { ...invite, [field]: value } : invite)));
+	};
+
+	const resetInviteForm = () => {
+		setFormInviteData([{ name: "", email: "", role: "PARTICIPANT" as const }]);
+	};
+
+	const handleInviteSubmit = (e: React.FormEvent) => {
+		e.preventDefault();
+		addInvitations.mutate({
+			eventId: id,
+			invitations: formInviteData,
+		});
+	};
+
+	const handleRemoveInvitation = (id: string) => {
+		if (confirm("Êtes-vous sûr de vouloir supprimer cette invitation ?")) {
+			removeInvitation.mutate({ invitationId: id });
+		}
+	};
 
 	const handleSave = () => {
 		updateEvent.mutate({
@@ -69,7 +140,7 @@ export default function EventSettingsPage({ params }: EventSettingsPageProps) {
 		});
 	};
 
-	const handleStatusChange = (status: 'DRAFT' | 'PUBLISHED' | 'CANCELLED' | 'COMPLETED') => {
+	const handleStatusChange = (status: "DRAFT" | "PUBLISHED" | "CANCELLED" | "COMPLETED") => {
 		updateStatus.mutate({
 			id,
 			status,
@@ -92,18 +163,14 @@ export default function EventSettingsPage({ params }: EventSettingsPageProps) {
 	if (error || !event) {
 		return (
 			<main className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-50 via-blue-50/30 to-indigo-50">
-				<Card className="w-full max-w-md text-center border-red-200">
+				<Card className="w-full max-w-md border-red-200 text-center">
 					<CardContent className="pt-6">
 						<div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-red-100">
 							<span className="text-2xl">⚠️</span>
 						</div>
 						<CardTitle className="mb-2 text-slate-800">Événement introuvable</CardTitle>
 						<p className="text-slate-600">Cet événement n'existe pas ou vous n'avez pas l'autorisation de le modifier.</p>
-						<Button
-							variant="outline"
-							className="mt-4"
-							onClick={() => router.push('/')}
-						>
+						<Button variant="outline" className="mt-4" onClick={() => router.push("/")}>
 							Retour au dashboard
 						</Button>
 					</CardContent>
@@ -120,11 +187,7 @@ export default function EventSettingsPage({ params }: EventSettingsPageProps) {
 				{/* Header */}
 				<div className="mb-8 flex items-center justify-between">
 					<div>
-						<Button
-							variant="ghost"
-							onClick={() => router.push('/')}
-							className="mb-4 text-slate-600 hover:text-slate-800"
-						>
+						<Button variant="ghost" onClick={() => router.push("/")} className="mb-4 text-slate-600 hover:text-slate-800">
 							<svg className="mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 								<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
 							</svg>
@@ -135,15 +198,20 @@ export default function EventSettingsPage({ params }: EventSettingsPageProps) {
 					</div>
 					<div className="flex items-center gap-3">
 						<Badge
-							variant={event.status === 'PUBLISHED' ? 'default' : 'secondary'}
-							className={event.status === 'PUBLISHED'
-								? "bg-gradient-to-r from-blue-600 to-purple-600 text-white"
-								: "bg-slate-100 text-slate-700"
+							variant={event.status === "PUBLISHED" ? "default" : "secondary"}
+							className={
+								event.status === "PUBLISHED"
+									? "bg-gradient-to-r from-blue-600 to-purple-600 text-white"
+									: "bg-slate-100 text-slate-700"
 							}
 						>
-							{event.status === 'PUBLISHED' ? 'Publié' :
-							 event.status === 'DRAFT' ? 'Brouillon' :
-							 event.status === 'CANCELLED' ? 'Annulé' : 'Terminé'}
+							{event.status === "PUBLISHED"
+								? "Publié"
+								: event.status === "DRAFT"
+									? "Brouillon"
+									: event.status === "CANCELLED"
+										? "Annulé"
+										: "Terminé"}
 						</Badge>
 					</div>
 				</div>
@@ -151,16 +219,18 @@ export default function EventSettingsPage({ params }: EventSettingsPageProps) {
 				<div className="grid gap-8 lg:grid-cols-3">
 					{/* Main Settings */}
 					<div className="lg:col-span-2">
-						<Card className="border-0 shadow-md">
+						<Card className="rounded-xl border-0 shadow-md">
 							<CardHeader className="flex flex-row items-center justify-between">
 								<CardTitle className="text-xl">Informations générales</CardTitle>
 								{!isEditing ? (
-									<Button
-										variant="outline"
-										onClick={() => setIsEditing(true)}
-									>
+									<Button variant="outline" onClick={() => setIsEditing(true)}>
 										<svg className="mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-											<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+											<path
+												strokeLinecap="round"
+												strokeLinejoin="round"
+												strokeWidth={2}
+												d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+											/>
 										</svg>
 										Modifier
 									</Button>
@@ -206,19 +276,15 @@ export default function EventSettingsPage({ params }: EventSettingsPageProps) {
 											</div>
 										)}
 
-										<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+										<div className="grid grid-cols-1 gap-4 md:grid-cols-2">
 											<div>
 												<Label className="text-sm font-medium text-slate-600">Date de début</Label>
-												<p className="mt-1 text-slate-900">
-													{new Date(event.startDate).toLocaleString("fr-FR")}
-												</p>
+												<p className="mt-1 text-slate-900">{new Date(event.startDate).toLocaleString("fr-FR")}</p>
 											</div>
 											{event.endDate && (
 												<div>
 													<Label className="text-sm font-medium text-slate-600">Date de fin</Label>
-													<p className="mt-1 text-slate-900">
-														{new Date(event.endDate).toLocaleString("fr-FR")}
-													</p>
+													<p className="mt-1 text-slate-900">{new Date(event.endDate).toLocaleString("fr-FR")}</p>
 												</div>
 											)}
 										</div>
@@ -254,7 +320,7 @@ export default function EventSettingsPage({ params }: EventSettingsPageProps) {
 											/>
 										</div>
 
-										<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+										<div className="grid grid-cols-1 gap-4 md:grid-cols-2">
 											<div>
 												<Label htmlFor="startDate">Date de début *</Label>
 												<Input
@@ -295,52 +361,153 @@ export default function EventSettingsPage({ params }: EventSettingsPageProps) {
 								)}
 							</CardContent>
 						</Card>
+						<Card className="mt-4 rounded-xl border-0 shadow-md">
+							<CardHeader className="flex flex-row items-center justify-between">
+								<CardTitle className="flex items-baseline gap-3 text-xl">
+									Participants{" "}
+									{!invitationsLoading && invitations && (
+										<span className="block text-right text-sm font-normal text-slate-500">{invitations.length} invités</span>
+									)}
+								</CardTitle>
+								<Dialog
+									onOpenChange={(open) => {
+										if (!open) resetInviteForm();
+									}}
+								>
+									<DialogTrigger asChild>
+										<Button variant="outline">
+											<Send />
+											Inviter
+										</Button>
+									</DialogTrigger>
+									<DialogContent className="">
+										<DialogHeader>
+											<DialogTitle>Inviter un participant</DialogTitle>
+											<DialogDescription>Invitez des personnes à rejoindre votre événement</DialogDescription>
+										</DialogHeader>
+										<p className="mb-2 font-semibold">Envoyez une invitation par email :</p>
+										<form>
+											{formInviteData.map((invite, index) => (
+												<div className="" key={index}>
+													<Input
+														className="mb-2"
+														placeholder="Nom du participant"
+														value={invite.name}
+														onChange={(e) => handleInviteChange(index, "name", e.target.value)}
+													/>
+													<Input
+														placeholder="Email du participant"
+														value={invite.email}
+														onChange={(e) => handleInviteChange(index, "email", e.target.value)}
+													/>
+													<Select
+														onValueChange={(value: "ORGANIZER" | "PARTICIPANT") =>
+															handleInviteChange(index, "role", value)
+														}
+													>
+														<SelectTrigger className="mt-2 w-full">
+															<SelectValue placeholder="Rôle du participant" />
+														</SelectTrigger>
+														<SelectContent>
+															<SelectGroup>
+																<SelectLabel>Rôle</SelectLabel>
+																<SelectItem value="PARTICIPANT">Participant</SelectItem>
+																<SelectItem value="ORGANIZER">Organisateur</SelectItem>
+															</SelectGroup>
+														</SelectContent>
+													</Select>
+												</div>
+											))}
+										</form>
+										<Button variant="ghost" className="mt-2" onClick={addInviteField}>
+											+ Ajouter un autre
+										</Button>
+
+										<DialogFooter className="mt-4 flex items-center">
+											<DialogClose asChild>
+												<Button variant="outline" onClick={resetInviteForm}>
+													Annuler
+												</Button>
+											</DialogClose>
+											<Button variant="default" className="" onClick={handleInviteSubmit} disabled={addInvitations.isPending}>
+												Envoyer l'invitation
+											</Button>
+										</DialogFooter>
+									</DialogContent>
+								</Dialog>
+							</CardHeader>
+							<div className="px-6">
+								{invitationsLoading && <span className="block text-center text-sm text-slate-500">Chargement...</span>}
+
+								{invitations?.map((invitation) => (
+									<div key={invitation.id} className="mt-4 flex items-center justify-between rounded-lg border p-4">
+										<div className="flex items-center gap-3">
+											<Avatar className="h-8 w-8">
+												<AvatarFallback className="bg-gradient-to-br from-blue-500 to-purple-500 text-sm text-white uppercase">
+													{invitation.name ? invitation.name.charAt(0) : invitation.email.charAt(0)}
+												</AvatarFallback>
+											</Avatar>
+											<span>{invitation.name}</span>
+										</div>
+										<span className="text-sm text-gray-500">{invitation.email}</span>
+										<span className="text-sm text-gray-500 uppercase">
+											{invitation.role === "ORGANIZER" ? "Organisateur" : "Participant"}
+										</span>
+										<Badge>{invitation.response && invitation.response.response === "YES" ? "Accepté" : "En attente"}</Badge>
+										<div
+											className="cursor-pointer rounded-lg p-2 text-red-500 hover:bg-gray-100"
+											onClick={() => handleRemoveInvitation(invitation.id)}
+										>
+											<Trash />
+										</div>
+									</div>
+								))}
+							</div>
+						</Card>
 					</div>
 
 					{/* Status & Actions */}
 					<div className="lg:col-span-1">
-						<Card className="border-0 shadow-md">
+						<Card className="rounded-xl border-0 shadow-md">
 							<CardHeader>
 								<CardTitle className="text-xl">Statut et actions</CardTitle>
 							</CardHeader>
 							<CardContent className="space-y-4">
 								<div>
-									<Label className="text-sm font-medium text-slate-600 mb-3 block">
-										Changer le statut
-									</Label>
+									<Label className="mb-3 block text-sm font-medium text-slate-600">Changer le statut</Label>
 									<div className="space-y-2">
 										<Button
-											variant={event.status === 'DRAFT' ? 'default' : 'outline'}
+											variant={event.status === "DRAFT" ? "default" : "outline"}
 											size="sm"
 											className="w-full justify-start"
-											onClick={() => handleStatusChange('DRAFT')}
+											onClick={() => handleStatusChange("DRAFT")}
 											disabled={updateStatus.isPending}
 										>
 											📝 Brouillon
 										</Button>
 										<Button
-											variant={event.status === 'PUBLISHED' ? 'default' : 'outline'}
+											variant={event.status === "PUBLISHED" ? "default" : "outline"}
 											size="sm"
 											className="w-full justify-start"
-											onClick={() => handleStatusChange('PUBLISHED')}
+											onClick={() => handleStatusChange("PUBLISHED")}
 											disabled={updateStatus.isPending}
 										>
 											🌟 Publié
 										</Button>
 										<Button
-											variant={event.status === 'CANCELLED' ? 'default' : 'outline'}
+											variant={event.status === "CANCELLED" ? "default" : "outline"}
 											size="sm"
 											className="w-full justify-start"
-											onClick={() => handleStatusChange('CANCELLED')}
+											onClick={() => handleStatusChange("CANCELLED")}
 											disabled={updateStatus.isPending}
 										>
 											❌ Annulé
 										</Button>
 										<Button
-											variant={event.status === 'COMPLETED' ? 'default' : 'outline'}
+											variant={event.status === "COMPLETED" ? "default" : "outline"}
 											size="sm"
 											className="w-full justify-start"
-											onClick={() => handleStatusChange('COMPLETED')}
+											onClick={() => handleStatusChange("COMPLETED")}
 											disabled={updateStatus.isPending}
 										>
 											✅ Terminé
@@ -348,10 +515,8 @@ export default function EventSettingsPage({ params }: EventSettingsPageProps) {
 									</div>
 								</div>
 
-								<div className="pt-4 border-t">
-									<Label className="text-sm font-medium text-slate-600 mb-3 block">
-										Statistiques
-									</Label>
+								<div className="border-t pt-4">
+									<Label className="mb-3 block text-sm font-medium text-slate-600">Statistiques</Label>
 									<div className="space-y-2 text-sm">
 										<div className="flex justify-between">
 											<span className="text-slate-600">Invitations:</span>
@@ -360,22 +525,18 @@ export default function EventSettingsPage({ params }: EventSettingsPageProps) {
 										<div className="flex justify-between">
 											<span className="text-slate-600">Réponses:</span>
 											<span className="font-medium">
-												{event.invitations.reduce((acc, inv) => acc + inv.responses.length, 0)}
+												{event.invitations.reduce((acc, inv) => acc + (inv.response ? 1 : 0), 0)}
 											</span>
 										</div>
 										<div className="flex justify-between">
 											<span className="text-slate-600">Créé le:</span>
-											<span className="font-medium">
-												{new Date(event.createdAt).toLocaleDateString("fr-FR")}
-											</span>
+											<span className="font-medium">{new Date(event.createdAt).toLocaleDateString("fr-FR")}</span>
 										</div>
 									</div>
 								</div>
 
 								{updateStatus.error && (
-									<div className="rounded-lg bg-red-50 p-3 text-sm text-red-600">
-										Erreur lors du changement de statut.
-									</div>
+									<div className="rounded-lg bg-red-50 p-3 text-sm text-red-600">Erreur lors du changement de statut.</div>
 								)}
 							</CardContent>
 						</Card>

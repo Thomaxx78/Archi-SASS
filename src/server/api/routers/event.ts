@@ -33,7 +33,7 @@ export const eventRouter = createTRPCRouter({
 			where: { createdById: ctx.session.user.id },
 			include: {
 				invitations: {
-					include: { responses: true },
+					include: { response: true },
 				},
 			},
 			orderBy: { startDate: 'asc' },
@@ -48,7 +48,7 @@ export const eventRouter = createTRPCRouter({
 			},
 			include: {
 				invitations: {
-					include: { responses: true },
+					include: { response: true },
 				},
 			},
 		});

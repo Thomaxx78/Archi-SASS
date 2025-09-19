@@ -3,6 +3,9 @@ import CredentialsProvider from 'next-auth/providers/credentials';
 import GoogleProvider from 'next-auth/providers/google';
 import bcryptjs from 'bcryptjs';
 import { db } from '~/server/db';
+import { mailService } from '~/server/services/mail';
+import { getWelcomeTemplate } from '~/server/templates/welcome';
+import { env } from '~/env';
 
 declare module 'next-auth' {
 	interface Session extends DefaultSession {
@@ -13,14 +16,14 @@ declare module 'next-auth' {
 }
 
 export const authConfig = {
-	secret: process.env.AUTH_SECRET,
+	secret: env.AUTH_SECRET,
 	session: {
 		strategy: "jwt",
 	},
 	providers: [
 		GoogleProvider({
-			clientId: process.env.GOOGLE_CLIENT_ID!,
-			clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+			clientId: env.GOOGLE_CLIENT_ID!,
+			clientSecret: env.GOOGLE_CLIENT_SECRET!,
 		}),
 		CredentialsProvider({
 			name: 'credentials',
@@ -86,7 +89,7 @@ export const authConfig = {
 					}
 				} else {
 					// Create new user with verified email
-					await db.user.create({
+					const newUser = await db.user.create({
 						data: {
 							email: user.email,
 							name: user.name,
@@ -94,6 +97,23 @@ export const authConfig = {
 							emailVerified: new Date(),
 						},
 					});
+
+					try {
+						const welcomeTemplate = getWelcomeTemplate({
+							userName: newUser.name || user.email,
+							appName: env.APP_NAME || 'Archi-SASS',
+							loginUrl: `${env.NEXTAUTH_URL}/login`,
+						});
+
+						await mailService.sendMail({
+							to: newUser.email!,
+							template: welcomeTemplate,
+						});
+
+						console.log('✅ Welcome email sent to:', newUser.email);
+					} catch (emailError) {
+						console.error('❌ Failed to send welcome email:', emailError);
+					}
 				}
 				return true;
 			}

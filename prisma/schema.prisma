@@ -55,6 +55,7 @@ model User {
   events                   Event[]
   sessions                 Session[]
   subscription             Subscription?
+  notifications            Notification[]
 }
 
 model VerificationToken {
@@ -172,6 +173,32 @@ enum InvitationStatus {
   PENDING
   SENT
   BOUNCED
+}
+
+model Notification {
+  id          String             @id @default(cuid())
+  userId      String
+  title       String
+  message     String
+  type        NotificationType   @default(INFO)
+  isRead      Boolean            @default(false)
+  actionUrl   String?
+  metadata    String?
+  createdAt   DateTime           @default(now())
+  user        User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+  @@index([createdAt])
+}
+
+enum NotificationType {
+  INFO
+  SUCCESS
+  WARNING
+  ERROR
+  EVENT_INVITATION
+  EVENT_UPDATE
+  SUBSCRIPTION_UPDATE
 }
 
 enum ResponseType {

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { type Session } from "next-auth";
 import { Button } from "~/components/ui/button";
 import { Avatar, AvatarFallback } from "~/components/ui/avatar";
+import { NotificationDropdown } from "~/components/ui/notification-dropdown";
 
 interface HeaderProps {
 	session: Session;
@@ -22,6 +23,7 @@ export function Header({ session, profile, mounted = false }: HeaderProps) {
 						</div>
 					</div>
 					<div className="flex items-center gap-4">
+						<NotificationDropdown />
 						<div className="flex items-center gap-3">
 							<Avatar className="h-8 w-8">
 								<AvatarFallback className="bg-gradient-to-br from-blue-500 to-purple-500 text-white text-sm">

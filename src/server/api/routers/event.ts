@@ -44,6 +44,11 @@ export const eventRouter = createTRPCRouter({
 	getAll: protectedProcedure.query(async ({ ctx }) => {
 		return ctx.db.event.findMany({
 			where: { createdById: ctx.session.user.id },
+			include: {
+				invitations: {
+					include: { response: true },
+				},
+			},
 			orderBy: { startDate: 'asc' },
 		});
 	}),
@@ -53,6 +58,11 @@ export const eventRouter = createTRPCRouter({
 			where: {
 				id: input.id,
 				createdById: ctx.session.user.id,
+			},
+			include: {
+				invitations: {
+					include: { response: true },
+				},
 			},
 		});
 	}),

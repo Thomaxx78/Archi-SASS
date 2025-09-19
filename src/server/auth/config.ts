@@ -5,6 +5,7 @@ import bcryptjs from 'bcryptjs';
 import { db } from '~/server/db';
 import { mailService } from '~/server/services/mail';
 import { getWelcomeTemplate } from '~/server/templates/welcome';
+import { StripeService } from '~/server/services/stripe';
 import { env } from '~/env';
 
 declare module 'next-auth' {
@@ -18,7 +19,7 @@ declare module 'next-auth' {
 export const authConfig = {
 	secret: env.AUTH_SECRET,
 	session: {
-		strategy: "jwt",
+		strategy: 'jwt',
 	},
 	providers: [
 		GoogleProvider({
@@ -87,6 +88,25 @@ export const authConfig = {
 							},
 						});
 					}
+
+					if (!existingUser.stripeCustomerId) {
+						try {
+							const customer = await StripeService.createCustomer({
+								userId: existingUser.id,
+								email: user.email,
+								name: user.name || existingUser.name || undefined,
+							});
+							await db.user.update({
+								where: { id: existingUser.id },
+								data: {
+									stripeCustomerId: customer.id,
+								},
+							});
+							console.log('✅ Stripe customer created for existing Google user:', customer.id);
+						} catch (error) {
+							console.error('❌ Failed to create Stripe customer for existing user:', error);
+						}
+					}
 				} else {
 					// Create new user with verified email
 					const newUser = await db.user.create({
@@ -99,6 +119,21 @@ export const authConfig = {
 					});
 
 					try {
+						// Créer un client Stripe
+						const customer = await StripeService.createCustomer({
+							userId: newUser.id,
+							email: user.email,
+							name: user.name || undefined,
+						});
+						await db.user.update({
+							where: { id: newUser.id },
+							data: {
+								stripeCustomerId: customer.id,
+							},
+						});
+						console.log('✅ Stripe customer created for new Google user:', customer.id);
+
+						// Envoyer l'email de bienvenue
 						const welcomeTemplate = getWelcomeTemplate({
 							userName: newUser.name || user.email,
 							appName: env.APP_NAME || 'Archi-SASS',
@@ -111,8 +146,8 @@ export const authConfig = {
 						});
 
 						console.log('✅ Welcome email sent to:', newUser.email);
-					} catch (emailError) {
-						console.error('❌ Failed to send welcome email:', emailError);
+					} catch (error) {
+						console.error('❌ Failed to create Stripe customer or send welcome email:', error);
 					}
 				}
 				return true;
@@ -155,19 +190,19 @@ export const authConfig = {
 		},
 		async redirect({ url, baseUrl }) {
 			// Redirect to home page after successful authentication
-			if (url.startsWith("/api/auth")) {
+			if (url.startsWith('/api/auth')) {
 				return baseUrl;
 			}
 			// Allows relative callback URLs
-			if (url.startsWith("/")) return `${baseUrl}${url}`;
+			if (url.startsWith('/')) return `${baseUrl}${url}`;
 			// Allows callback URLs on the same origin
 			if (new URL(url).origin === baseUrl) return url;
 			return baseUrl;
 		},
 	},
 	pages: {
-        signIn: '/login',
-        newUser: '/register',
+		signIn: '/login',
+		newUser: '/register',
 		error: '/auth/error',
 	},
 } satisfies NextAuthConfig;

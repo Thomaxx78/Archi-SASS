@@ -3,6 +3,7 @@
 import { type Session } from "next-auth";
 import { api } from "~/trpc/react";
 import { useState, useEffect } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import { Button } from "~/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
 import { Badge } from "~/components/ui/badge";
@@ -13,6 +14,8 @@ import { Label } from "~/components/ui/label";
 import { Separator } from "~/components/ui/separator";
 import { Header } from "~/components/ui/header";
 import { BackButton } from "~/components/ui/back-button";
+import AddPaymentMethod from "~/components/forms/add-payment-method";
+import Link from "next/link";
 
 interface ProfileProps {
 	session: Session;
@@ -21,17 +24,47 @@ interface ProfileProps {
 export default function Profile({ session }: ProfileProps) {
 	const [isEditing, setIsEditing] = useState(false);
 	const [mounted, setMounted] = useState(false);
+	const [showAddPaymentMethod, setShowAddPaymentMethod] = useState(false);
+	const [deletingPaymentMethodId, setDeletingPaymentMethodId] = useState<string | null>(null);
+	const [showSuccessNotification, setShowSuccessNotification] = useState(false);
 	const [formData, setFormData] = useState({
 		firstName: "",
 		lastName: "",
 		description: "",
 	});
 
+	const searchParams = useSearchParams();
+	const router = useRouter();
+
 	const { data: profile, isLoading, error, refetch } = api.user.getProfile.useQuery();
+	const { data: currentSubscription, refetch: refetchSubscription } = api.subscription.getCurrentSubscription.useQuery();
+	const { data: paymentMethods, refetch: refetchPaymentMethods } = api.subscription.getPaymentMethods.useQuery();
 	const updateProfile = api.user.updateProfile.useMutation({
-		onSuccess: () => {
+		onSuccess: async () => {
 			setIsEditing(false);
-			refetch();
+			await refetch();
+		},
+	});
+
+	const cancelSubscription = api.subscription.cancelSubscription.useMutation({
+		onSuccess: async () => {
+			await refetchSubscription();
+		},
+	});
+
+	const reactivateSubscription = api.subscription.reactivateSubscription.useMutation({
+		onSuccess: async () => {
+			await refetchSubscription();
+		},
+	});
+
+	const removePaymentMethod = api.subscription.removePaymentMethod.useMutation({
+		onSuccess: async () => {
+			setDeletingPaymentMethodId(null);
+			await refetchPaymentMethods();
+		},
+		onError: () => {
+			setDeletingPaymentMethodId(null);
 		},
 	});
 
@@ -46,10 +79,57 @@ export default function Profile({ session }: ProfileProps) {
 		}
 	}, [profile]);
 
-	// Handle hydration
 	useEffect(() => {
 		setMounted(true);
-	}, []);
+
+		const subscriptionSuccess = searchParams.get("subscription_success");
+		const paymentMethodAdded = searchParams.get("payment_method_added");
+
+		if (subscriptionSuccess === "true") {
+			setShowSuccessNotification(true);
+			const url = new URL(window.location.href);
+			url.searchParams.delete("subscription_success");
+			router.replace(url.pathname + url.search);
+
+			void refetchSubscription();
+			void refetchPaymentMethods();
+
+			setTimeout(() => setShowSuccessNotification(false), 5000);
+		}
+
+		if (paymentMethodAdded === "true") {
+			void refetchPaymentMethods();
+		}
+	}, [searchParams, router, refetchPaymentMethods, refetchSubscription]);
+
+	const handleCancelSubscription = async () => {
+		if (!currentSubscription) return;
+
+		const confirmMessage =
+			"Êtes-vous sûr de vouloir annuler votre abonnement ? Il restera actif jusqu'à la fin de la période de facturation actuelle.";
+
+		if (confirm(confirmMessage)) {
+			try {
+				await cancelSubscription.mutateAsync({ cancelAtPeriodEnd: true });
+			} catch (error) {
+				console.error("Erreur lors de l'annulation:", error);
+			}
+		}
+	};
+
+	const handleReactivateSubscription = async () => {
+		if (!currentSubscription) return;
+
+		const confirmMessage = "Êtes-vous sûr de vouloir réactiver votre abonnement ?";
+
+		if (confirm(confirmMessage)) {
+			try {
+				await reactivateSubscription.mutateAsync();
+			} catch (error) {
+				console.error("Erreur lors de la réactivation:", error);
+			}
+		}
+	};
 
 	if (isLoading) {
 		return (
@@ -67,17 +147,14 @@ export default function Profile({ session }: ProfileProps) {
 	if (error) {
 		return (
 			<main className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-50 via-blue-50/30 to-indigo-50">
-				<Card className="w-full max-w-md text-center border-red-200">
+				<Card className="w-full max-w-md border-red-200 text-center">
 					<CardContent className="pt-6">
 						<div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-red-100">
 							<span className="text-2xl">⚠️</span>
 						</div>
 						<CardTitle className="mb-2 text-slate-800">Erreur de chargement</CardTitle>
-						<p className="text-slate-600 mb-4">Impossible de charger votre profil. Veuillez réessayer.</p>
-						<Button
-							variant="outline"
-							onClick={() => window.location.reload()}
-						>
+						<p className="mb-4 text-slate-600">Impossible de charger votre profil. Veuillez réessayer.</p>
+						<Button variant="outline" onClick={() => window.location.reload()}>
 							Réessayer
 						</Button>
 					</CardContent>
@@ -88,11 +165,29 @@ export default function Profile({ session }: ProfileProps) {
 
 	return (
 		<main className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-indigo-50">
-			<Header
-				session={session}
-				profile={profile}
-				mounted={mounted}
-			/>
+			{/* Notification de succès */}
+			{showSuccessNotification && (
+				<div className="animate-in slide-in-from-top-2 fixed top-4 right-4 z-50">
+					<div className="flex items-center gap-3 rounded-lg border border-green-200 bg-green-50 p-4 shadow-lg">
+						<div className="flex h-8 w-8 items-center justify-center rounded-full bg-green-100">
+							<svg className="h-5 w-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+							</svg>
+						</div>
+						<div>
+							<p className="font-medium text-green-800">Paiement réussi !</p>
+							<p className="text-sm text-green-600">Votre abonnement a été activé avec succès.</p>
+						</div>
+						<button onClick={() => setShowSuccessNotification(false)} className="ml-4 text-green-400 hover:text-green-600">
+							<svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+							</svg>
+						</button>
+					</div>
+				</div>
+			)}
+
+			<Header session={session} profile={profile} mounted={mounted} />
 			<BackButton href="/" label="Retour au dashboard" />
 
 			{/* Profile Content */}
@@ -100,34 +195,58 @@ export default function Profile({ session }: ProfileProps) {
 				<div className="mx-auto max-w-4xl">
 					{/* Profile Header */}
 					<div className="mb-8">
-						<Card className="bg-gradient-to-r from-blue-600 to-purple-600 border-0 text-white rounded-xl">
+						<Card className="rounded-xl border-0 bg-gradient-to-r from-blue-600 to-purple-600 text-white">
 							<CardContent className="p-8">
 								<div className="flex items-center gap-6">
 									<Avatar className="h-20 w-20">
-										<AvatarFallback className="bg-white/20 backdrop-blur-sm text-white text-2xl">
-											{mounted ? ((profile as any)?.firstName?.charAt(0) ?? session.user?.name?.charAt(0) ?? session.user?.email?.charAt(0) ?? "U") : "U"}
+										<AvatarFallback className="bg-white/20 text-2xl text-white backdrop-blur-sm">
+											{mounted
+												? ((profile as any)?.firstName?.charAt(0) ??
+													session.user?.name?.charAt(0) ??
+													session.user?.email?.charAt(0) ??
+													"U")
+												: "U"}
 										</AvatarFallback>
 									</Avatar>
 									<div className="flex-1">
-										<h1 className="text-3xl font-bold mb-2">
-											{mounted ? ((profile as any)?.firstName && (profile as any)?.lastName
-												? `${(profile as any).firstName} ${(profile as any).lastName}`
-												: (session.user?.name ?? "Utilisateur")) : "Utilisateur"}
+										<h1 className="mb-2 text-3xl font-bold">
+											{mounted
+												? (profile as any)?.firstName && (profile as any)?.lastName
+													? `${(profile as any).firstName} ${(profile as any).lastName}`
+													: (session.user?.name ?? "Utilisateur")
+												: "Utilisateur"}
 										</h1>
-										<p className="text-blue-100 text-lg mb-4">
-											{mounted ? ((profile as any)?.description || "Aucune description pour le moment") : "Aucune description pour le moment"}
+										<p className="mb-4 text-lg text-blue-100">
+											{mounted
+												? (profile as any)?.description || "Aucune description pour le moment"
+												: "Aucune description pour le moment"}
 										</p>
-										<Badge variant="secondary" className="bg-white/20 hover:bg-white/30 text-white border-white/30">
+										<Badge variant="secondary" className="border-white/30 bg-white/20 text-white hover:bg-white/30">
 											<svg className="mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-												<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+												<path
+													strokeLinecap="round"
+													strokeLinejoin="round"
+													strokeWidth={2}
+													d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+												/>
 											</svg>
 											{mounted ? profile?.email : ""}
 										</Badge>
 									</div>
 									{!isEditing && (
-										<Button size="lg" variant="secondary" className="bg-white/20 hover:bg-white/30 text-white border-white/30" onClick={() => setIsEditing(true)}>
+										<Button
+											size="lg"
+											variant="secondary"
+											className="border-white/30 bg-white/20 text-white hover:bg-white/30"
+											onClick={() => setIsEditing(true)}
+										>
 											<svg className="mr-2 h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-												<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+												<path
+													strokeLinecap="round"
+													strokeLinejoin="round"
+													strokeWidth={2}
+													d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+												/>
 											</svg>
 											Modifier le profil
 										</Button>
@@ -138,11 +257,16 @@ export default function Profile({ session }: ProfileProps) {
 					</div>
 
 					{/* Profile Details Card */}
-					<Card className="border-0 shadow-md rounded-xl">
+					<Card className="rounded-xl border-0 shadow-md">
 						<CardHeader className="border-b border-slate-100">
-							<CardTitle className="text-2xl text-slate-900 flex items-center gap-2">
+							<CardTitle className="flex items-center gap-2 text-2xl text-slate-900">
 								<svg className="h-6 w-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-									<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+									<path
+										strokeLinecap="round"
+										strokeLinejoin="round"
+										strokeWidth={2}
+										d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+									/>
 								</svg>
 								Informations personnelles
 							</CardTitle>
@@ -163,7 +287,9 @@ export default function Profile({ session }: ProfileProps) {
 								>
 									<div className="grid gap-6 md:grid-cols-2">
 										<div className="space-y-2">
-											<Label htmlFor="firstName" className="text-slate-700 font-medium">Prénom</Label>
+											<Label htmlFor="firstName" className="font-medium text-slate-700">
+												Prénom
+											</Label>
 											<Input
 												id="firstName"
 												type="text"
@@ -174,7 +300,9 @@ export default function Profile({ session }: ProfileProps) {
 											/>
 										</div>
 										<div className="space-y-2">
-											<Label htmlFor="lastName" className="text-slate-700 font-medium">Nom de famille</Label>
+											<Label htmlFor="lastName" className="font-medium text-slate-700">
+												Nom de famille
+											</Label>
 											<Input
 												id="lastName"
 												type="text"
@@ -187,7 +315,9 @@ export default function Profile({ session }: ProfileProps) {
 									</div>
 
 									<div className="space-y-2">
-										<Label htmlFor="email" className="text-slate-700 font-medium">Email</Label>
+										<Label htmlFor="email" className="font-medium text-slate-700">
+											Email
+										</Label>
 										<Input
 											id="email"
 											type="email"
@@ -195,16 +325,23 @@ export default function Profile({ session }: ProfileProps) {
 											disabled
 											className="cursor-not-allowed bg-slate-50 text-slate-500"
 										/>
-										<p className="text-xs text-slate-500 flex items-center gap-1">
+										<p className="flex items-center gap-1 text-xs text-slate-500">
 											<svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-												<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+												<path
+													strokeLinecap="round"
+													strokeLinejoin="round"
+													strokeWidth={2}
+													d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+												/>
 											</svg>
 											L'email ne peut pas être modifié
 										</p>
 									</div>
 
 									<div className="space-y-2">
-										<Label htmlFor="description" className="text-slate-700 font-medium">Description</Label>
+										<Label htmlFor="description" className="font-medium text-slate-700">
+											Description
+										</Label>
 										<Textarea
 											id="description"
 											value={formData.description}
@@ -244,7 +381,12 @@ export default function Profile({ session }: ProfileProps) {
 											{updateProfile.isPending ? (
 												<>
 													<svg className="mr-2 h-4 w-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-														<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+														<path
+															strokeLinecap="round"
+															strokeLinejoin="round"
+															strokeWidth={2}
+															d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+														/>
 													</svg>
 													Enregistrement...
 												</>
@@ -263,16 +405,16 @@ export default function Profile({ session }: ProfileProps) {
 								<div className="space-y-6">
 									<div className="grid gap-6 md:grid-cols-2">
 										<div className="space-y-2">
-											<Label className="text-slate-700 font-medium">Prénom</Label>
-											<div className="p-3 rounded-lg bg-slate-50 border border-slate-200">
+											<Label className="font-medium text-slate-700">Prénom</Label>
+											<div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
 												<p className="text-slate-800">
 													{(profile as any)?.firstName || <span className="text-slate-400 italic">Non renseigné</span>}
 												</p>
 											</div>
 										</div>
 										<div className="space-y-2">
-											<Label className="text-slate-700 font-medium">Nom de famille</Label>
-											<div className="p-3 rounded-lg bg-slate-50 border border-slate-200">
+											<Label className="font-medium text-slate-700">Nom de famille</Label>
+											<div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
 												<p className="text-slate-800">
 													{(profile as any)?.lastName || <span className="text-slate-400 italic">Non renseigné</span>}
 												</p>
@@ -281,19 +423,24 @@ export default function Profile({ session }: ProfileProps) {
 									</div>
 
 									<div className="space-y-2">
-										<Label className="text-slate-700 font-medium">Email</Label>
-										<div className="p-3 rounded-lg bg-slate-50 border border-slate-200 flex items-center gap-2">
+										<Label className="font-medium text-slate-700">Email</Label>
+										<div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
 											<svg className="h-4 w-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-												<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.207" />
+												<path
+													strokeLinecap="round"
+													strokeLinejoin="round"
+													strokeWidth={2}
+													d="M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.207"
+												/>
 											</svg>
 											<p className="text-slate-800">{profile?.email}</p>
 										</div>
 									</div>
 
 									<div className="space-y-2">
-										<Label className="text-slate-700 font-medium">Description</Label>
-										<div className="p-3 rounded-lg bg-slate-50 border border-slate-200 min-h-[80px]">
-											<p className="text-slate-800 leading-relaxed">
+										<Label className="font-medium text-slate-700">Description</Label>
+										<div className="min-h-[80px] rounded-lg border border-slate-200 bg-slate-50 p-3">
+											<p className="leading-relaxed text-slate-800">
 												{(profile as any)?.description || <span className="text-slate-400 italic">Aucune description</span>}
 											</p>
 										</div>
@@ -302,14 +449,381 @@ export default function Profile({ session }: ProfileProps) {
 							)}
 
 							{updateProfile.error && (
-								<div className="mt-6 p-4 rounded-lg bg-red-50 border border-red-200 flex items-start gap-3">
-									<svg className="h-5 w-5 text-red-500 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-										<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+								<div className="mt-6 flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 p-4">
+									<svg className="mt-0.5 h-5 w-5 flex-shrink-0 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path
+											strokeLinecap="round"
+											strokeLinejoin="round"
+											strokeWidth={2}
+											d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+										/>
 									</svg>
 									<div>
 										<p className="text-sm font-medium text-red-800">Erreur lors de la mise à jour</p>
 										<p className="text-sm text-red-600">Impossible de sauvegarder vos modifications. Veuillez réessayer.</p>
 									</div>
+								</div>
+							)}
+						</CardContent>
+					</Card>
+
+					{/* Subscription Section */}
+					<Card className="mt-8 rounded-xl border-0 shadow-md">
+						<CardHeader className="border-b border-slate-100">
+							<CardTitle className="flex items-center gap-2 text-2xl text-slate-900">
+								<svg className="h-6 w-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path
+										strokeLinecap="round"
+										strokeLinejoin="round"
+										strokeWidth={2}
+										d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"
+									/>
+								</svg>
+								Mon abonnement
+							</CardTitle>
+						</CardHeader>
+
+						<CardContent className="p-6">
+							{currentSubscription ? (
+								<div className="space-y-6">
+									{/* Plan actuel */}
+									<div className="flex items-center justify-between rounded-lg border border-slate-200 bg-gradient-to-r from-blue-50 to-purple-50 p-4">
+										<div>
+											<h3 className="text-lg font-semibold text-slate-900">Plan {currentSubscription.plan?.name}</h3>
+											<p className="text-sm text-slate-600">
+												{currentSubscription.plan?.price === 0
+													? "Gratuit"
+													: `${(currentSubscription.plan?.price || 0) / 100}€/${currentSubscription.plan?.interval}`}
+											</p>
+										</div>
+										<div className="text-right">
+											<div className="flex flex-col gap-2">
+												<Badge variant={currentSubscription.status === "active" ? "default" : "secondary"} className="mb-2">
+													{currentSubscription.status === "active" ? "Actif" : currentSubscription.status}
+												</Badge>
+
+												{/* Afficher si l'annulation est programmée */}
+												{currentSubscription.cancelAt && (
+													<Badge variant="outline" className="border-orange-200 bg-orange-50 text-orange-700">
+														Annulation programmée
+													</Badge>
+												)}
+											</div>
+
+											{currentSubscription.currentPeriodEnd && (
+												<p className="text-xs text-slate-500">
+													{currentSubscription.cancelAt
+														? `Se termine le ${new Date(currentSubscription.currentPeriodEnd).toLocaleDateString("fr-FR")}`
+														: `Jusqu'au ${new Date(currentSubscription.currentPeriodEnd).toLocaleDateString("fr-FR")}`}
+												</p>
+											)}
+
+											{/* Afficher la date d'annulation */}
+											{currentSubscription.cancelAt && (
+												<p className="mt-1 text-xs text-orange-600">
+													Annulation le {new Date(currentSubscription.cancelAt).toLocaleDateString("fr-FR")}
+												</p>
+											)}
+										</div>
+									</div>
+
+									{/* Fonctionnalités du plan */}
+									{currentSubscription.plan?.features && (
+										<div className="space-y-3">
+											<h4 className="font-medium text-slate-700">Fonctionnalités incluses :</h4>
+											<ul className="grid gap-2 md:grid-cols-2">
+												{currentSubscription.plan.features.map((feature, index) => (
+													<li key={index} className="flex items-center text-sm text-slate-600">
+														<svg
+															className="mr-2 h-4 w-4 text-green-500"
+															fill="none"
+															stroke="currentColor"
+															viewBox="0 0 24 24"
+														>
+															<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+														</svg>
+														{feature}
+													</li>
+												))}
+											</ul>
+										</div>
+									)}
+
+									{/* Actions */}
+									<div className="flex gap-3 border-t border-slate-100 pt-4">
+										<Link href="/profile/subscription">
+											<Button variant="outline" size="sm">
+												<svg className="mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+													<path
+														strokeLinecap="round"
+														strokeLinejoin="round"
+														strokeWidth={2}
+														d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+													/>
+												</svg>
+												Modifier le plan
+											</Button>
+										</Link>
+
+										{/* Bouton d'annulation ou de réactivation */}
+										{currentSubscription.status === "active" && !currentSubscription.cancelAt && (
+											<Button
+												variant="ghost"
+												size="sm"
+												className="text-red-600 hover:bg-red-50 hover:text-red-700"
+												onClick={handleCancelSubscription}
+												disabled={cancelSubscription.isPending}
+											>
+												{cancelSubscription.isPending ? (
+													<>
+														<svg
+															className="mr-2 h-4 w-4 animate-spin"
+															fill="none"
+															stroke="currentColor"
+															viewBox="0 0 24 24"
+														>
+															<path
+																strokeLinecap="round"
+																strokeLinejoin="round"
+																strokeWidth={2}
+																d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+															/>
+														</svg>
+														Annulation...
+													</>
+												) : (
+													<>
+														<svg className="mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+															<path
+																strokeLinecap="round"
+																strokeLinejoin="round"
+																strokeWidth={2}
+																d="M6 18L18 6M6 6l12 12"
+															/>
+														</svg>
+														Annuler l'abonnement
+													</>
+												)}
+											</Button>
+										)}
+
+										{/* Bouton de réactivation si annulation programmée */}
+										{currentSubscription.status === "active" && currentSubscription.cancelAt && (
+											<Button
+												variant="outline"
+												size="sm"
+												className="text-green-600 hover:bg-green-50 hover:text-green-700"
+												onClick={handleReactivateSubscription}
+												disabled={reactivateSubscription.isPending}
+											>
+												{reactivateSubscription.isPending ? (
+													<>
+														<svg
+															className="mr-2 h-4 w-4 animate-spin"
+															fill="none"
+															stroke="currentColor"
+															viewBox="0 0 24 24"
+														>
+															<path
+																strokeLinecap="round"
+																strokeLinejoin="round"
+																strokeWidth={2}
+																d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+															/>
+														</svg>
+														Réactivation...
+													</>
+												) : (
+													<>
+														<svg className="mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+															<path
+																strokeLinecap="round"
+																strokeLinejoin="round"
+																strokeWidth={2}
+																d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+															/>
+														</svg>
+														Réactiver l'abonnement
+													</>
+												)}
+											</Button>
+										)}
+									</div>
+								</div>
+							) : (
+								<div className="py-8 text-center">
+									<div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-slate-100">
+										<svg className="h-8 w-8 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+											<path
+												strokeLinecap="round"
+												strokeLinejoin="round"
+												strokeWidth={2}
+												d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"
+											/>
+										</svg>
+									</div>
+									<h3 className="mb-2 text-lg font-medium text-slate-900">Aucun abonnement actif</h3>
+									<p className="mb-4 text-sm text-slate-600">
+										Vous n'avez pas encore d'abonnement. Découvrez nos plans pour accéder à toutes les fonctionnalités.
+									</p>
+									<Link href="/profile/subscription">
+										<Button className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700">
+											<svg className="mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+												<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+											</svg>
+											Choisir un plan
+										</Button>
+									</Link>
+								</div>
+							)}
+						</CardContent>
+					</Card>
+
+					{/* Payment Methods Section */}
+					<Card className="mt-8 rounded-xl border-0 shadow-md">
+						<CardHeader className="border-b border-slate-100">
+							<div className="flex items-center justify-between">
+								<CardTitle className="flex items-center gap-2 text-2xl text-slate-900">
+									<svg className="h-6 w-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path
+											strokeLinecap="round"
+											strokeLinejoin="round"
+											strokeWidth={2}
+											d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"
+										/>
+									</svg>
+									Moyens de paiement
+								</CardTitle>
+								{!showAddPaymentMethod && (
+									<Button variant="outline" size="sm" onClick={() => setShowAddPaymentMethod(true)}>
+										<svg className="mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+											<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+										</svg>
+										Ajouter une carte
+									</Button>
+								)}
+							</div>
+						</CardHeader>
+
+						<CardContent className="p-6">
+							{showAddPaymentMethod && (
+								<div className="mb-6">
+									<AddPaymentMethod
+										onSuccess={() => {
+											setShowAddPaymentMethod(false);
+											// Recharger les moyens de paiement après succès
+											void refetchPaymentMethods();
+										}}
+										onCancel={() => setShowAddPaymentMethod(false)}
+									/>
+								</div>
+							)}
+
+							{paymentMethods && paymentMethods.length > 0 ? (
+								<div className="space-y-4">
+									{paymentMethods.map((pm) => (
+										<div key={pm.id} className="flex items-center justify-between rounded-lg border border-slate-200 p-4">
+											<div className="flex items-center gap-3">
+												{/* Icône de la carte */}
+												<div className="flex h-12 w-12 items-center justify-center rounded-lg bg-slate-100">
+													{pm.card?.brand === "visa" && (
+														<svg className="h-8 w-8" viewBox="0 0 40 24" fill="none">
+															<rect width="40" height="24" rx="4" fill="#1A1F71" />
+															<path d="M16.283 18.434h-2.802l1.751-10.935h2.802l-1.751 10.935z" fill="white" />
+															<path
+																d="M27.528 7.499c-.557-.218-1.43-.452-2.522-.452-2.785 0-4.742 1.467-4.758 3.57-.015 1.555 1.402 2.42 2.472 2.937 1.099.531 1.468.871 1.464 1.345-.007.726-.879 1.058-1.692 1.058-1.13 0-1.73-.164-2.656-.568l-.363-.172-.397 2.426c.659.301 1.881.563 3.146.575 2.96 0 4.882-1.449 4.901-3.693.01-1.232-.742-2.168-2.371-2.938-986-.785-1.593-1.308-1.588-2.105.004-.705.799-1.458 2.523-1.458.887-.015 1.533.187 2.034.397l.244.121.388-2.337z"
+																fill="white"
+															/>
+															<path
+																d="M20.973 18.434h-2.671l2.188-10.935h2.461c.571 0 1.075.329 1.287.836l4.059 10.099h-2.952l-.59-1.439h-3.61l-.172 1.439zm3.782-6.058l-.915 2.307h2.338l-1.423-3.546z"
+																fill="white"
+															/>
+														</svg>
+													)}
+													{pm.card?.brand === "mastercard" && (
+														<svg className="h-8 w-8" viewBox="0 0 40 24" fill="none">
+															<rect width="40" height="24" rx="4" fill="#EB001B" />
+															<circle cx="15" cy="12" r="7" fill="#EB001B" />
+															<circle cx="25" cy="12" r="7" fill="#FF5F00" />
+															<circle cx="25" cy="12" r="7" fill="#F79E1B" />
+														</svg>
+													)}
+													{pm.card?.brand !== "visa" && pm.card?.brand !== "mastercard" && (
+														<svg className="h-6 w-6 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+															<path
+																strokeLinecap="round"
+																strokeLinejoin="round"
+																strokeWidth={2}
+																d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"
+															/>
+														</svg>
+													)}
+												</div>
+
+												{/* Informations de la carte */}
+												<div>
+													<p className="font-medium text-slate-900">
+														{pm.card?.brand?.toUpperCase()} •••• {pm.card?.last4}
+													</p>
+													<p className="text-sm text-slate-600">
+														Expire {pm.card?.expMonth?.toString().padStart(2, "0")}/{pm.card?.expYear}
+													</p>
+													<p className="text-xs text-slate-500 capitalize">
+														{pm.card?.funding} • Ajoutée le {new Date(pm.created * 1000).toLocaleDateString("fr-FR")}
+													</p>
+												</div>
+											</div>
+
+											{/* Actions */}
+											<div className="flex items-center gap-2">
+												<Button
+													variant="ghost"
+													size="sm"
+													className="text-red-600 hover:bg-red-50 hover:text-red-700"
+													onClick={() => {
+														if (confirm("Êtes-vous sûr de vouloir supprimer cette carte ?")) {
+															setDeletingPaymentMethodId(pm.id);
+															removePaymentMethod.mutate({ paymentMethodId: pm.id });
+														}
+													}}
+													disabled={deletingPaymentMethodId === pm.id}
+												>
+													<svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+														<path
+															strokeLinecap="round"
+															strokeLinejoin="round"
+															strokeWidth={2}
+															d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+														/>
+													</svg>
+													{deletingPaymentMethodId === pm.id ? "Suppression..." : "Supprimer"}
+												</Button>
+											</div>
+										</div>
+									))}
+								</div>
+							) : (
+								<div className="py-8 text-center">
+									<div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-slate-100">
+										<svg className="h-8 w-8 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+											<path
+												strokeLinecap="round"
+												strokeLinejoin="round"
+												strokeWidth={2}
+												d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"
+											/>
+										</svg>
+									</div>
+									<h3 className="mb-2 text-lg font-medium text-slate-900">Aucun moyen de paiement</h3>
+									<p className="mb-4 text-sm text-slate-600">Vous n'avez pas encore enregistré de moyen de paiement.</p>
+									{!showAddPaymentMethod && (
+										<Button variant="outline" onClick={() => setShowAddPaymentMethod(true)}>
+											<svg className="mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+												<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+											</svg>
+											Ajouter une carte
+										</Button>
+									)}
 								</div>
 							)}
 						</CardContent>

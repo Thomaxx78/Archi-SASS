@@ -5,6 +5,7 @@ import { createTRPCRouter, publicProcedure } from '~/server/api/trpc';
 import { TRPCError } from '@trpc/server';
 import { mailService } from '~/server/services/mail';
 import { getWelcomeTemplate } from '~/server/templates/welcome';
+import { StripeService } from '~/server/services/stripe';
 
 const registerSchema = z.object({
 	email: z.string().email(),
@@ -226,6 +227,25 @@ export const authRouter = createTRPCRouter({
 			data: userData,
 		});
 
+		// Créer un client Stripe pour tous les utilisateurs
+		try {
+			const customer = await StripeService.createCustomer({
+				userId: user.id,
+				email: input.email,
+				name: input.name,
+			});
+			await ctx.db.user.update({
+				where: { id: user.id },
+				data: {
+					stripeCustomerId: customer.id,
+				},
+			});
+			console.log('✅ Stripe customer created:', customer.id);
+		} catch (error) {
+			console.error('❌ Failed to create Stripe customer:', error);
+		}
+
+		// Envoyer les emails
 		await Promise.allSettled(
 			emailsToSend.map(email => mailService.sendMail(email))
 		);
